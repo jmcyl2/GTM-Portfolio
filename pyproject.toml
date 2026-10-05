@@ -1,0 +1,20 @@
+[project]
+name = "fund-signal-engine"
+version = "0.1.0"
+description = "Signal engine that finds small PE/RE fund managers still running their own quarterly close, from public SEC filings."
+readme = "README.md"
+authors = [
+    { name = "Joseph Leung", email = "jmcyl2@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb>=1.5.6",
+]
+
+[project.scripts]
+fse-ingest = "fund_signal_engine.ingest:main"
+fse-build = "fund_signal_engine.build:main"
+
+[build-system]
+requires = ["uv_build>=0.11.28,<0.12.0"]
+build-backend = "uv_build"
