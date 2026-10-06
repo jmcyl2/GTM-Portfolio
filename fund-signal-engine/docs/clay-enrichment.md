@@ -9,7 +9,10 @@ This is how the top 50 shortlisted advisers (the Clay trial caps a table at 50 r
 - **Company domain.**
   - The adviser's Form ADV website field gives 32 of the 50.
   - The other 18 list a LinkedIn page, nothing, or a social profile. They were researched and checked against each filing's address and named people; 16 were verified. Clay's name-to-domain lookup was tried first and returned nothing on a 10-row test.
-  - **Every domain must accept mail** (an MX record check). Five fail: three listed in the filings and two found in research. Their websites work, but email to them would bounce.
+  - **Every domain must accept mail** (an MX record check).
+    - Three domains listed in the filings, and one found in research, have websites but no mail server, so email to them would bounce.
+    - One firm has no website that could be verified.
+    - Where a firm's mail runs on a different domain from its website (e.g. nrdcequity.com → nrdc.com), the mail domain is used.
   - **Result: 45 of 50 have a usable email domain.**
 - **Contact.**
   - Picked from **Schedule A** of the adviser's Form ADV, which lists executive officers and owners with their titles. The current filing is used first, then the 2024 bulk data.
