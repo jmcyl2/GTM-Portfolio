@@ -45,7 +45,7 @@ UPDATE backtest SET score = f_audited::INT + f_mid_size::INT + f_small_mgr::INT 
 
 -- Which administrators won the funds that switched (for the market map).
 CREATE OR REPLACE TABLE switch_winners AS
-SELECT a.admin_key, any_value(a.administrator) AS administrator, count(DISTINCT bt.fund_id) AS funds_won
+SELECT a.admin_key, min(a.administrator) AS administrator, count(DISTINCT bt.fund_id) AS funds_won
 FROM backtest bt
 JOIN fund_admin_obs a ON a.filing_id = bt.outcome_filing_id AND a.regime = bt.outcome_regime
                      AND a.reference_id = bt.outcome_reference_id

@@ -13,13 +13,13 @@ Share of funds reporting no outside administrator (latest filing per adviser):
 
 | Fund type | Funds | No outside administrator |
 |---|---|---|
-| Other Private Fund | 10,998 | 26% |
-| Hedge Fund | 20,832 | 12% |
-| Liquidity Fund | 128 | 18% |
-| Securitized Asset Fund | 3,712 | 11% |
 | Real Estate Fund | 7,823 | 54% |
 | Private Equity Fund | 40,381 | 39% |
+| Other Private Fund | 10,998 | 26% |
 | Venture Capital Fund | 41,107 | 23% |
+| Liquidity Fund | 128 | 18% |
+| Hedge Fund | 20,832 | 12% |
+| Securitized Asset Fund | 3,712 | 11% |
 
 ## Target universe
 
@@ -45,15 +45,15 @@ Tier A = every PE/RE fund self-administered · B = some · C = none (control gro
 
 | Largest by PE/RE funds | Funds |
 |---|---|
-| GEN II FUND SERVICES, LLC | 2028 |
+| GEN II  FUND SERVICES LLC | 2028 |
 | SS&C TECHNOLOGIES | 1231 |
 | STANDISH MANAGEMENT | 1043 |
-| SEI GLOBAL SERVICES, INC | 712 |
+| SEI GLOBAL SERVICES | 712 |
 | EQUITYBEE FUND MANAGEMENT LLC | 696 |
 | NAV CONSULTING | 447 |
-| APEX GROUP LTD. | 438 |
+| APEX GROUP | 438 |
 | ALTER DOMUS | 402 |
-| STATE STREET BANK AND TRUST COMPANY | 295 |
+| STATE STREET BANK AND TRUST CO | 295 |
 | SS&C PRIVATE EQUITY SERVICES | 262 |
 
 ## Backtest: does the score predict who buys fund administration?
@@ -83,16 +83,16 @@ Caveat: funds that stopped reporting within 3 years (wound down, merged) are exc
 
 | Who won the switchers | Funds |
 |---|---|
-| GEN II FUND SERVICES, LLC | 128 |
+| GEN II FUND SERVICES | 128 |
 | STANDISH MANAGEMENT | 124 |
-| SS&C TECHNOLOGIES, INC. | 106 |
+| SS&C TECHNOLOGIES | 106 |
 | SEI GLOBAL SERVICES | 93 |
-| SS&C PRIVATE EQUITY SERVICES, INC. | 71 |
+| SS&C PRIVATE EQUITY SERVICES | 71 |
 | MUFG CAPITAL ANALYTICS LLC | 68 |
 | U.S. BANCORP FUND SERVICES, LLC | 64 |
 | CITCO FUND ADMINISTRATION (CAYMAN ISLANDS) LIMITED | 56 |
-| SEI | 29 |
 | COLMORE | 29 |
+| SEI | 29 |
 
 ## Form D as a freshness trigger
 

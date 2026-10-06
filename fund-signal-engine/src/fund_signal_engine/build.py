@@ -39,7 +39,7 @@ def report(con) -> str:
     # --- coverage
     filled, total = one("SELECT count(has_admin), count(*) FROM fund_obs")
     lo, hi = one("SELECT min(filed_on), max(filed_on) FROM fund_obs")
-    roster_file = one("SELECT string_agg(DISTINCT source_file, ', ') FROM roster")[0]
+    roster_file = one("SELECT string_agg(DISTINCT source_file, ', ' ORDER BY source_file) FROM roster")[0]
     md += ["## Data", "",
            f"- Fund-level rows (Schedule D 7.B.(1)): **{total:,}** across filings {lo} to {hi}; "
            f"administrator field answered on **{pct(filled, total)}**.",
@@ -48,7 +48,8 @@ def report(con) -> str:
     # --- self-administration by fund type, latest filing per adviser
     rows = q("""SELECT fund_type, count(*), count(*) FILTER (NOT has_admin)
                 FROM fund_obs JOIN latest_filing USING (filing_id, regime)
-                WHERE fund_type IS NOT NULL GROUP BY 1 ORDER BY 3::DOUBLE / 2 DESC""")
+                WHERE fund_type IS NOT NULL GROUP BY 1
+                ORDER BY count(*) FILTER (NOT has_admin)::DOUBLE / count(*) DESC""")
     md += ["## Who runs their own close", "", "Share of funds reporting no outside administrator (latest filing per adviser):", "",
            table(["Fund type", "Funds", "No outside administrator"], [(t, f"{n:,}", pct(s, n)) for t, n, s in rows]), ""]
 
@@ -72,7 +73,7 @@ def report(con) -> str:
     # --- administrators
     n_admins = one("SELECT count(*) FROM administrators")[0]
     n_band = one(f"SELECT count(*) FROM administrators WHERE pe_re_funds BETWEEN {BOUTIQUE_MIN} AND {BOUTIQUE_MAX}")[0]
-    top = q("SELECT administrator, pe_re_funds FROM administrators ORDER BY pe_re_funds DESC LIMIT 10")
+    top = q("SELECT administrator, pe_re_funds FROM administrators ORDER BY pe_re_funds DESC, administrator LIMIT 10")
     md += ["## Fund administrators (channel buyer)", "",
            f"- **{n_admins:,}** distinct US administrator names serve PE/RE funds of active advisers; "
            f"**{n_band}** serve {BOUTIQUE_MIN}-{BOUTIQUE_MAX} funds (boutique band, before removing bank/large-admin subsidiaries).", "",
@@ -90,7 +91,7 @@ def report(con) -> str:
     by_score = q("SELECT score, count(*), avg(switched::INT) FROM backtest GROUP BY 1 ORDER BY 1")
     hi_rate = one("SELECT avg(switched::INT) FROM backtest WHERE score >= 3")[0] or 0
     lo_rate = one("SELECT avg(switched::INT) FROM backtest WHERE score <= 1")[0] or 0
-    winners = q("SELECT administrator, funds_won FROM switch_winners ORDER BY funds_won DESC LIMIT 10")
+    winners = q("SELECT administrator, funds_won FROM switch_winners ORDER BY funds_won DESC, administrator LIMIT 10")
     md += ["## Backtest: does the score predict who buys fund administration?", "",
            f"Cohort: **{n:,}** self-administered PE/RE funds (base year 2014-2021, first eligible year per fund), "
            f"observed again 3 years later. **{100 * base:.1f}%** had hired an outside administrator.", "",
@@ -125,7 +126,7 @@ def export_private(con):
     path = PRIVATE / "targets.csv"
     cur = con.execute("""SELECT tier, adviser_name, crd, regime, state, round(private_fund_assets / 1e6, 1) AS private_fund_assets_musd,
                                 private_fund_count, n_pe, n_re, all_audited, cco_name, website, fund_detail_as_of
-                         FROM targets ORDER BY tier, private_fund_assets DESC""")
+                         FROM targets ORDER BY tier, private_fund_assets DESC, crd""")
     with open(path, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow([d[0] for d in cur.description])

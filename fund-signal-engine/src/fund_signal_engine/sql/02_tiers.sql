@@ -47,8 +47,8 @@ WHERE n_pe_re > 0
 -- Buyer B: US administrators serving PE/RE funds of currently active advisers.
 CREATE OR REPLACE TABLE administrators AS
 SELECT a.admin_key,
-       any_value(a.administrator)                                        AS administrator,
-       any_value(a.admin_state)                                          AS admin_state,
+       min(a.administrator)                                        AS administrator,
+       min(a.admin_state)                                          AS admin_state,
        count(DISTINCT f.fund_id)                                         AS pe_re_funds,
        count(DISTINCT f.crd)                                             AS advisers
 FROM fund_admin_obs a
