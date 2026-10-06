@@ -2,6 +2,8 @@
 
 # Fund Signal Engine
 
+**Short on time? Read the [5-minute case study](CASE_STUDY.md).**
+
 Say you sell accounting services to small investment funds. Which funds should you contact first? This project works that out from free SEC data, then checks whether its picks were right.
 
 ## Background
