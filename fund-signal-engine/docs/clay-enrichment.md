@@ -29,19 +29,22 @@ Resolution logic: [`contacts.py`](../src/fund_signal_engine/contacts.py). Hand-o
 2. Put the webhook URL in `.env` as `CLAY_WEBHOOK_URL` and run `uv run fse-clay push`. That sends 50 rows.
 3. **Check:** 50 rows, with columns including `company_name`, `domain_final`, `contact_first_name`, `contact_last_name`, `contact_full_name`, `contact_title` and `contact_source`.
 
-## 2. Work-email waterfall → `Work email`, `Email status`
+## 2. Work-email waterfall → `Work Email`, `Email Provider`
 
-1. **Add column → Waterfall** and pick the **work email** waterfall.
-2. Map the inputs:
-   - first name → `contact_first_name`
-   - last name → `contact_last_name`
-   - company domain → `domain_final`
-3. Keep the provider order Clay suggests. Keep **email validation/verification** on, and keep **stop at first valid result** on.
-4. **Save & Run (10 Rows)** first. Check the credits used per row, then run the remaining rows.
-5. Rename the final email column **`Work email`** and the validation result column **`Email status`**.
-6. **Optional:** if Clay shows which provider found each email, extract it to a column named **`Email provider`**.
+As of October 2026, Clay's interface differs from its docs in a couple of places. This is what was actually used:
 
-Rows with no domain or no contact are skipped by the waterfall, so they cost no credits.
+1. **Add enrichment** (top right) → search **Work Email** → **Full configuration**.
+2. Map the inputs. Clay takes a full name rather than first and last:
+   - **Full name** → `contact_full_name`
+   - **Company domain** → `domain_final`
+   - **Company name** → `company_name`
+   - **Company social profile URL** → `linkedin_company_url`
+3. Infer-email: **off**, so no guessed addresses.
+4. **Validation strategy: Conservative.** Balanced is greyed out on the trial, so only addresses confirmed deliverable are returned and catch-all domains are dropped.
+5. **Output name of successful provider: on.**
+6. Run 10 rows first. That cost 11 credits for 4 emails from 8 eligible rows. Then run the rest from the column header.
+
+Because the company name is mapped as an input, the waterfall can still find a mailbox for firms with no verified domain. `fse-clay report` flags those, and checks every returned email against the contact's name and the firm's domain (see QA below).
 
 ## 3. Optional: LinkedIn profile → `Contact LinkedIn`
 
@@ -51,7 +54,14 @@ Add a person-level LinkedIn lookup using `contact_full_name` + `company_name` + 
 
 1. Export the table to CSV and save it as `data/private/clay_export.csv` (gitignored).
 2. Note the credits used: the balance before minus after, from workspace → Settings → Plans & Billing.
-3. Run `uv run fse-clay report --credits <used>`. That writes [`outputs/enrichment.md`](../outputs/enrichment.md) with step-by-step coverage, contact sources, and cost per verified email.
+3. Run `uv run fse-clay report --credits <data credits> --actions <actions>`. That writes [`outputs/enrichment.md`](../outputs/enrichment.md) with step-by-step coverage, contact sources, and cost per verified email.
+
+## QA
+
+Validation proves an address accepts mail, not that it belongs to the right person. The report checks every returned email:
+- **Free-mail addresses are rejected.** One came back: a Yahoo address for a firm with no domain.
+- **The mailbox must plausibly match the contact.** Accepted forms are the name or surname, a short first name (`wes` for Wesley), or initials including middle names or a second surname (`amn`, `ogn`).
+- **Emails on a different domain from the firm's website are counted but listed separately.** This is usually the firm's real mail domain or an affiliate's.
 
 ## Portfolio evidence
 

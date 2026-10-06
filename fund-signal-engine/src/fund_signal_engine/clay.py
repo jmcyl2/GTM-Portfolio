@@ -115,60 +115,101 @@ def push(dry_run: bool, limit: int | None):
     print(f"pushed {sent} rows ({len(done)} already sent earlier, {len(rows)} on the shortlist)")
 
 
-# Column names in the Clay export: pushed fields plus the outputs the guide names.
+# Clay title-cases headers on export ("domain_final" -> "Domain Final"), so columns
+# are matched after normalising to snake_case.
 COLS = {
     "domain_found": "domain_final",
     "person_name": "contact_full_name",
     "person_source": "contact_source",
-    "linkedin": "Contact LinkedIn",
-    "email": "Work email",
-    "email_status": "Email status",
-    "email_provider": "Email provider",
+    "linkedin": "contact_linkedin",
+    "email": "work_email",
+    "email_status": "email_status",
+    "email_provider": "email_provider",
 }
+FREE_MAIL = ("gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "aol.com", "icloud.com", "proton.me")
 
 
-def report(credits_used: float | None):
-    df = pd.read_csv(EXPORT, dtype=str)
-    required = ["domain_found", "person_name", "email", "email_status"]
-    missing = [COLS[c] for c in required if COLS[c] not in df.columns]
+def name_plausible(email: str, full_name: str) -> bool:
+    """Does the mailbox look like it belongs to this person (name, surname or initials)?"""
+    local = re.sub(r"[^a-z]", "", email.split("@")[0].lower())
+    parts = [re.sub(r"[^a-z]", "", p) for p in str(full_name).lower().split()]
+    parts = [p for p in parts if p]
+    if not parts or not local:
+        return False
+    return (any(len(p) > 2 and p in local for p in parts)            # a name or surname
+            or (len(local) >= 3 and parts[0].startswith(local))       # short first name: wes = wesley
+            or (2 <= len(local) <= 4 and local[0] == parts[0][0]      # initials, with optional middle or
+                and local[-1] == parts[-1][0]))                       # second surname: amn, ogn
+
+
+def report(credits_used: float | None, actions_used: float | None):
+    df = pd.read_csv(EXPORT, dtype=str).replace({"undefined": None, "": None, "None found": None})
+    df.columns = [re.sub(r"\W+", "_", c.strip().lower()).strip("_") for c in df.columns]
+    missing = [COLS[c] for c in ("domain_found", "person_name", "email") if COLS[c] not in df.columns]
     if missing:
-        raise SystemExit(f"Export is missing columns {missing}; rename them in Clay to match docs/clay-enrichment.md.")
-    for optional in ("linkedin", "email_provider", "person_source"):
+        raise SystemExit(f"Export is missing columns {missing}; see docs/clay-enrichment.md.")
+    for optional in ("linkedin", "email_provider", "person_source", "email_status"):
         if COLS[optional] not in df.columns:
-            df[COLS[optional]] = ""
-    has = lambda c: df[COLS[c]].fillna("").str.strip().ne("")
+            df[COLS[optional]] = None
+    col = lambda c: df[COLS[c]].fillna("").str.strip()
+    has = lambda c: col(c).ne("")
     n = len(df)
-    domain_in = df["domain_source"].fillna("").eq("SEC Form ADV website")
-    status = df[COLS["email_status"]].fillna("").str.lower()
-    verified = has("email") & status.str.contains("valid|verified|deliverable") & ~status.str.contains("invalid|undeliverable")
-    risky = has("email") & status.str.contains("catch|risky|accept")
-    steps = [
-        ("Advisers on the shortlist", n),
-        ("Company domain known (from ADV)", int(domain_in.sum())),
-        ("Company domain known (after manual verification)", int(has("domain_found").sum())),
-        ("Named contact from SEC filings", int(has("person_name").sum())),
-        ("...with LinkedIn profile", int((has("person_name") & has("linkedin")).sum())),
-        ("Work email found", int(has("email").sum())),
-        ("...verified deliverable", int(verified.sum())),
-        ("...catch-all / risky", int(risky.sum())),
+
+    email, domain = col("email").str.lower(), col("domain_found").str.lower()
+    email_domain = email.str.split("@").str[-1]
+    found = has("email")
+    free = found & email_domain.isin(FREE_MAIL)
+    named = pd.Series([name_plausible(e, nm) if e else False for e, nm in zip(email, col("person_name"))], index=df.index)
+    on_domain = found & ~free & domain.ne("") & email_domain.eq(domain)
+    other_domain = found & ~free & domain.ne("") & email_domain.ne(domain)
+    no_domain = found & ~free & domain.eq("")
+    usable = found & ~free & named
+    from_adv = df.get("domain_source", pd.Series("", index=df.index)).fillna("").eq("SEC Form ADV website")
+
+    funnel = [
+        ("Advisers enriched", n),
+        ("Usable company mail domain (ADV website, or verified by research; MX checked)", int(has("domain_found").sum())),
+        ("Named contact from SEC filings (Form ADV Schedule A / Item 1.J)", int(has("person_name").sum())),
+        ("Email returned by the Clay waterfall (Conservative validation)", int(found.sum())),
+        ("**Usable after QA**", int(usable.sum())),
     ]
+    qa = [
+        ("On the verified company domain", int(on_domain.sum())),
+        ("On a different domain (firm's mail domain or an affiliate)", int(other_domain.sum())),
+        ("Firm had no verified domain; matched from company name", int(no_domain.sum())),
+        ("Rejected: personal/free-mail address", int(free.sum())),
+        ("Rejected: mailbox doesn't match the contact's name", int((found & ~free & ~named).sum())),
+    ]
+    provider = df.loc[found & ~free, COLS["email_provider"]].fillna("unknown").value_counts()
     source = df.loc[has("person_name"), COLS["person_source"]].fillna("unknown").value_counts()
-    provider = df.loc[has("email"), COLS["email_provider"]].fillna("unknown").value_counts()
-    md = ["[← Findings](findings.md)", "", "# Enrichment funnel (Clay waterfall)", "",
-          f"{n} of the {len(pd.read_csv(PRIVATE / 'shortlist.csv'))} shortlisted advisers (the top {n} by v2 score; "
-          "the Clay trial caps a table at 50 rows), enriched in Clay following "
-          "[`docs/clay-enrichment.md`](../docs/clay-enrichment.md). "
+    finance = df.get("contact_title", pd.Series("", index=df.index)).fillna("").str.upper().str.contains(
+        r"\bCFO\b|CHIEF FINANCIAL|FINANCE|CONTROLLER|TREASURER|\bCAO\b")
+    shortlist_n = len(pd.read_csv(PRIVATE / "shortlist.csv"))
+
+    md = ["[← Findings](findings.md)", "", "# Enrichment funnel", "",
+          f"The top {n} of the {shortlist_n} shortlisted advisers by v2 score (the Clay trial caps a table at 50 rows). "
+          "Domains and contacts come from public SEC data first; Clay runs only the work-email waterfall. "
+          "Method: [`docs/clay-enrichment.md`](../docs/clay-enrichment.md). "
           "Aggregates only; contact-level output stays in `data/private/`.", "",
-          table(["Step", "Advisers", "Coverage"], [(s, v, pct(v, n)) for s, v in steps]), "",
-          "**Where the contact came from:**", "", table(["Source", "Advisers"], list(source.items())), "",
+          table(["Step", "Advisers", "Coverage"], [(s, v, pct(v, n)) for s, v in funnel]), "",
+          f"**{int((usable & finance).sum())} of the {int(usable.sum())} usable emails belong to a finance-titled "
+          "contact** (CFO, controller, treasurer, VP finance).", "",
+          "## QA of returned emails", "",
+          "Clay's validation confirms an address will accept mail, not that it is the right person. "
+          "Every returned email is checked against the contact's name and the firm's verified domain.", "",
+          table(["Check", "Emails"], qa), "",
           "**Which provider found the email (first hit in the waterfall):**", "",
-          table(["Provider", "Emails"], list(provider.items())), ""]
+          table(["Provider", "Emails"], list(provider.items())), "",
+          "**Where the contact came from:**", "", table(["Source", "Advisers"], list(source.items())), ""]
     if credits_used:
-        md += [f"**Cost:** {credits_used:g} Clay credits in total, "
-               f"{credits_used / n:.1f} per adviser and "
-               f"{credits_used / max(int(verified.sum()), 1):.1f} per verified email.", ""]
+        md += ["## Cost", "",
+               f"- **{credits_used:g} Clay data credits** in total: {credits_used / n:.2f} per adviser, "
+               f"**{credits_used / max(int(usable.sum()), 1):.2f} per usable email**."
+               + (f" Plus {actions_used:g} Clay actions." if actions_used else ""),
+               "- Domains and contacts cost nothing: they come from SEC filings, manual verification and a DNS check.", ""]
     (OUT / "enrichment.md").write_text("\n".join(md) + "\n")
-    print("\n".join(f"{s}: {v} ({pct(v, n)})" for s, v in steps))
+    for s_, v in funnel + qa:
+        print(f"{s_}: {v}")
 
 
 def main():
@@ -178,12 +219,13 @@ def main():
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--limit", type=int)
     r = sub.add_parser("report")
-    r.add_argument("--credits", type=float, help="total Clay credits the enrichment used")
+    r.add_argument("--credits", type=float, help="Clay data credits the enrichment used")
+    r.add_argument("--actions", type=float, help="Clay actions the enrichment used")
     args = parser.parse_args()
     if args.cmd == "push":
         push(args.dry_run, args.limit)
     else:
-        report(args.credits)
+        report(args.credits, args.actions)
 
 
 if __name__ == "__main__":
