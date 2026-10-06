@@ -63,6 +63,16 @@ Validation proves an address accepts mail, not that it belongs to the right pers
 - **The mailbox must plausibly match the contact.** Accepted forms are the name or surname, a short first name (`wes` for Wesley), or initials including middle names or a second surname (`amn`, `ogn`).
 - **Emails on a different domain from the firm's website are counted but listed separately.** This is usually the firm's real mail domain or an affiliate's.
 
-## Portfolio evidence
+## Screenshots
 
-Two screenshots, with every email and name blurred: the table's columns, and the waterfall's provider order. Save them as `docs/img/clay-table.png` and `docs/img/clay-waterfall.png`.
+**The table:** 50 rows pushed by webhook, with the waterfall run. Emails are pixelated.
+
+![Clay table](img/clay-table.png)
+
+**Waterfall inputs:** full name, domain, company name, company LinkedIn.
+
+![Waterfall inputs](img/clay-waterfall-inputs.png)
+
+**Provider sequence:** Findymail, Hunter, Prospeo, Kitt, Datagma, Wiza, …
+
+![Waterfall providers](img/clay-waterfall-providers.png)

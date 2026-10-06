@@ -72,6 +72,11 @@ The top 50 shortlisted advisers were enriched (the Clay trial caps a table at 50
 - **Clay ran only the work-email waterfall**, under Conservative validation. It returned 42 emails, and **41 survived QA (82% of advisers)** for **54.1 credits, about 1.3 credits per usable email**. Findymail found 35 of them.
 - **QA catches what validation can't.** One validated address was a Yahoo mailbox for the wrong person. The name check is tuned so nicknames and initials (`wes`, `amn`) aren't falsely rejected.
 
+<p align="center">
+  <img src="docs/img/clay-table.png" width="49%" alt="Clay table: 50 SEC-sourced rows with the work-email waterfall (emails blurred)">
+  <img src="docs/img/clay-waterfall-providers.png" width="49%" alt="Clay work-email waterfall: provider sequence">
+</p>
+
 ## Pipeline
 
 ```
