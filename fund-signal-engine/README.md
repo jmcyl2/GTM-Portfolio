@@ -2,11 +2,31 @@
 
 # Fund Signal Engine
 
-A go-to-market signal engine built entirely on public SEC data. It finds small private-equity and real-estate fund managers that still run their own quarterly close, without an outside fund administrator, and backtests the targeting against what those funds actually did next.
+**Who should you sell to first, and can you prove it?** This project answers that for one market, small private-equity and real-estate funds, using only free public data. It then checks the answer against what those funds actually did.
 
-The buyer it targets is the controller or CFO at a sub-$500M PE/RE fund, plus the boutique fund administrators who serve them. The pipeline stops before outreach: nothing here sends email.
+## The problem
 
-**Results: [`outputs/findings.md`](outputs/findings.md) · [`outputs/score_v2.md`](outputs/score_v2.md) · [`outputs/refresh.md`](outputs/refresh.md) · [`outputs/enrichment.md`](outputs/enrichment.md)**
+Every fund has to close its books each quarter and send investors their statements. Most pay an outside **fund administrator** to do it. Many small funds still do it in-house, and they are the natural buyers for any fund-accounting product or service.
+
+A bought contact list tells you which funds exist. It can't tell you which ones still run their own books, or which of those will pay for help. That information is public: every fund manager reports it to the SEC. Nobody reads it at scale.
+
+## What it does
+
+1. **Finds the buyers.** It reads 2 million fund records from SEC filings and flags managers whose funds use no outside administrator. **→ 280 targets.**
+2. **Ranks them.** It scores each manager on how likely they are to pay for help, using 20 signals from the same filings.
+3. **Proves the ranking works.** It tests the score on 2011–2024 history, then on what happened in 2025–26, after the model was built. Firms ranked highly bought administration at **twice the rate (20% vs 9%, p = 0.011)**.
+4. **Finds the right person.** It pulls each firm's finance contact (CFO, controller) from the filings, then gets verified work emails with Clay. **→ 41 of 50 firms, for 54 credits.**
+
+## Why it's valuable
+
+- **A signal, not a list.** A signal is a public fact showing that a company has your problem right now. Here, it's "this fund has no administrator."
+- **Measured, not assumed.** Most targeting never gets checked. This was checked twice, and the first version, which failed, is still published unchanged.
+- **Cheap.** Free public data does the heavy lifting. Paid tools are used only at the last step, at about 1.3 credits per usable email.
+- **It told the business something.** Most funds that run their own books look like funds that historically never outsource. That's a real risk for anyone selling to them, found before a single email went out.
+
+**Start here:** [results summary](outputs/findings.md) · [ranking model](outputs/score_v2.md) · [forward test](outputs/refresh.md) · [enrichment](outputs/enrichment.md)
+
+<sub>The pipeline stops before outreach: openers are drafted, never sent.</sub>
 
 ## Why this data
 
