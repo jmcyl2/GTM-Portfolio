@@ -23,7 +23,19 @@ SELECT fl.regime, fl.filing_id, fl.crd, fl.adviser_name, fl.filed_on,
        try_cast(replace(f."Gross Asset Value", ',', '') AS DOUBLE)          AS gross_assets,
        f."Annual Audit" = 'Y'                                               AS audited,
        CASE f.Administrator WHEN 'Y' THEN true WHEN 'N' THEN false END      AS has_admin,
-       nullif(trim(f.Country), '')                                          AS fund_country
+       nullif(trim(f.Country), '')                                          AS fund_country,
+       -- extra fund attributes used as candidate signals by the v2 score
+       try_cast(replace(f.Owners, ',', '') AS INTEGER)                      AS owners,
+       try_cast(f."%Owned Non-US" AS DOUBLE)                                AS pct_non_us,
+       try_cast(f."%Owned You or Related" AS DOUBLE)                        AS pct_owned_related,
+       try_cast(f."% Assets Valued" AS DOUBLE)                              AS pct_third_party_valued,
+       try_cast(replace(f."Minimum Investment", ',', '') AS DOUBLE)         AS min_investment,
+       f."Fund of Funds" = 'Y'                                              AS fund_of_funds,
+       f."Master Fund" = 'Y' OR f."Feeder Fund" = 'Y'                       AS master_feeder,
+       f."3(c)(7) Exclusion" = 'Y'                                          AS qualified_purchasers_only,
+       f.GAAP = 'Y'                                                         AS gaap,
+       f."FS Distributed" = 'Y'                                             AS fs_distributed,
+       f.Marketing = 'Y'                                                    AS uses_placement_agent
 FROM (SELECT 'ERA' AS regime, * FROM raw_era_funds
       UNION ALL BY NAME
       SELECT 'IA' AS regime, * FROM raw_ia_funds) f

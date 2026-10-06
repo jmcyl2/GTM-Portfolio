@@ -6,7 +6,7 @@ A go-to-market signal engine built entirely on public SEC data. It finds small p
 
 The buyer it targets is the controller or CFO at a sub-$500M PE/RE fund, plus the boutique fund administrators who serve them. The pipeline stops before outreach: nothing here sends email.
 
-**Results: [`outputs/findings.md`](outputs/findings.md)**
+**Results: [`outputs/findings.md`](outputs/findings.md) · [`outputs/score_v2.md`](outputs/score_v2.md)**
 
 ## Why this data
 
@@ -36,19 +36,31 @@ Full numbers are in [`outputs/findings.md`](outputs/findings.md).
 - **Self-administration is concentrated where the thesis said it would be.** 54% of real-estate funds and 39% of PE funds report no outside administrator, against 12% of hedge funds.
 - **The target list is small: 280 Tier A advisers.** These are US managers, active today, with $20M–$500M in private funds across 1–5 funds, where every PE/RE fund is self-administered. 197 of them have every one of those funds audited. A list that size calls for hand-personalized outreach, not volume.
 - **Only one of the four pre-registered signals held up.** Audited funds switched to an outside administrator at 1.8x the rate of unaudited ones. Mid-size advisers and fast-growing funds switched *less* often than the rest. The composite score's lift was only 1.2x, and it wasn't monotonic. The score is left as registered: refitting it after seeing outcomes would make the backtest meaningless.
-- **An open question for discovery calls:** mid-size, self-administered managers are *less* likely to buy existing administration services. Is that because the pain is low, or because current offerings don't fit them? The data can't tell those apart; conversations can.
+
+### Score v2: rebuilt without cheating
+
+Full numbers are in [`outputs/score_v2.md`](outputs/score_v2.md).
+
+v1 failed, so v2 learns which signals matter from **20 fund attributes** in the filings. It is trained only on funds from 2014–2017 and graded on 2018–2021 funds it never saw, with v1 graded on the same set.
+
+- **v2 beats v1 out of sample: AUC 0.597 vs 0.528** (0.5 is random). That's a modest gain, reported as it is.
+- **It's an exclusion filter, not a winner-picker.** The bottom 40% by score switched at 7.6%, the top 60% at 16.0% (2.1x). Within the top 60% the score barely separates funds.
+- **The strongest signals:** the fund is limited to institutional "qualified purchasers" (+); the adviser already uses an administrator for other funds (+); the fund is a fund of funds (+). Older funds and real-estate funds are *less* likely to switch. The number of investors, my strongest prior, barely matters.
+- **Applied to today's list, only 79 of 278 Tier A advisers pass the filter.** Most managers that run their own close look like the funds that historically never outsourced it. In other words, the market that does its own close is largely the market least likely to pay someone else to do it. That's the most useful thing this project found, and it's a question to take into discovery calls rather than something to assume away.
 
 ## Pipeline
 
 ```
 SEC bulk ADV (2011–2024) ─┐
 SEC adviser roster (today) ┼─► DuckDB ─► staging ─► targets (Tier A/B/C) ─► private target list
-SEC Form D (last 4 qtrs) ─┘                     └─► backtest + market map ─► outputs/findings.md
+SEC Form D (last 4 qtrs) ─┘                     ├─► backtest + market map ─► outputs/findings.md
+                                                 └─► score v2 (train 2014–17, test 2018–21) ─► outputs/score_v2.md
 ```
 
 - `ingest.py` pulls only the tables it needs out of the multi-GB SEC bulk zips (HTTP range reads, not full downloads), politely: an identified User-Agent, a rate limit, and retries.
 - `sql/` holds plain SQL models: staging, then targeting tiers, then the backtest.
 - `build.py` runs the models and writes the aggregate findings (committed) and the contact-level target list (gitignored).
+- `score_v2.py` fits the out-of-time logistic regression, compares it with v1, and ranks today's targets.
 
 ## Run it
 
@@ -58,6 +70,7 @@ uv sync
 echo 'SEC_USER_AGENT="Your Name you@example.com"' > .env   # SEC requires an identified client
 uv run fse-ingest     # ~5 min, ~2 GB on disk under data/
 uv run fse-build
+uv run fse-score
 ```
 
 ## Data handling
@@ -67,7 +80,9 @@ Everything comes from public SEC filings. The repo commits only aggregate statis
 ## Roadmap
 
 1. ~~Targeting spine + backtest~~
-2. Enrichment waterfall on a 50-row sample: domain → person → email → verification, with coverage and cost per step
-3. Personalized openers generated from each fund's own filing data (written, not sent)
-4. Daily n8n job: new filings → dedupe → score → Slack alert
-5. Public dashboard: the fund-administration market map
+2. ~~Score v2 on an out-of-time split~~
+3. Refresh Tier A against current per-firm ADV filings (bulk fund detail ends Dec 2024)
+4. Enrichment waterfall on a 50-row sample: domain → person → email → verification, with coverage and cost per step
+5. Personalized openers generated from each fund's own filing data (written, not sent)
+6. Daily n8n job: new filings → dedupe → score → Slack alert
+7. Public dashboard: the fund-administration market map

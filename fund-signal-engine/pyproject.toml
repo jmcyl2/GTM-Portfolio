@@ -9,11 +9,14 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "duckdb>=1.5.6",
+    "pandas>=3.0.6",
+    "scikit-learn>=1.9.1",
 ]
 
 [project.scripts]
 fse-ingest = "fund_signal_engine.ingest:main"
 fse-build = "fund_signal_engine.build:main"
+fse-score = "fund_signal_engine.score_v2:main"
 
 [build-system]
 requires = ["uv_build>=0.11.28,<0.12.0"]
