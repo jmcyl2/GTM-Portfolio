@@ -168,16 +168,16 @@ def report(credits_used: float | None, actions_used: float | None):
 
     funnel = [
         ("Advisers enriched", n),
-        ("Usable company mail domain (ADV website, or verified by research; MX checked)", int(has("domain_found").sum())),
-        ("Named contact from SEC filings (Form ADV Schedule A / Item 1.J)", int(has("person_name").sum())),
-        ("Email returned by the Clay waterfall (Conservative validation)", int(found.sum())),
-        ("**Usable after QA**", int(usable.sum())),
+        ("Company domain that can receive email (from the filing or found by research, MX record checked)", int(has("domain_found").sum())),
+        ("Named contact from SEC filings (Form ADV Schedule A or Item 1.J)", int(has("person_name").sum())),
+        ("Email found by Clay's waterfall (Conservative setting)", int(found.sum())),
+        ("**Usable after my checks**", int(usable.sum())),
     ]
     qa = [
         ("On the verified company domain", int(on_domain.sum())),
-        ("On a different domain (firm's mail domain or an affiliate)", int(other_domain.sum())),
-        ("Firm had no verified domain; matched from company name", int(no_domain.sum())),
-        ("Rejected: personal/free-mail address", int(free.sum())),
+        ("On a different domain (the firm's separate mail domain, or an affiliate's)", int(other_domain.sum())),
+        ("Firm had no verified domain; Clay matched it from the company name", int(no_domain.sum())),
+        ("Rejected: personal address (Gmail, Yahoo, etc.)", int(free.sum())),
         ("Rejected: mailbox doesn't match the contact's name", int((found & ~free & ~named).sum())),
     ]
     provider = df.loc[found & ~free, COLS["email_provider"]].fillna("unknown").value_counts()
@@ -186,27 +186,29 @@ def report(credits_used: float | None, actions_used: float | None):
         r"\bCFO\b|CHIEF FINANCIAL|FINANCE|CONTROLLER|TREASURER|\bCAO\b")
     shortlist_n = len(pd.read_csv(PRIVATE / "shortlist.csv"))
 
-    md = ["[← Findings](findings.md)", "", "# Enrichment funnel", "",
-          f"The top {n} of the {shortlist_n} shortlisted advisers by v2 score (the Clay trial caps a table at 50 rows). "
-          "Domains and contacts come from public SEC data first; Clay runs only the work-email waterfall. "
-          "Method: [`docs/clay-enrichment.md`](../docs/clay-enrichment.md). "
-          "Aggregates only; contact-level output stays in `data/private/`.", "",
+    md = ["[← Findings](findings.md)", "", "# Finding contacts and emails", "",
+          f"The top {n} of the {shortlist_n} advisers on the contact list, by v2 score (Clay's free trial limits a "
+          "table to 50 rows). Company domains and contact names come from SEC filings first, at no cost. Clay is only "
+          "used to find work emails, with its waterfall: it tries one email provider after another until one finds a "
+          "verified address. Method: [`docs/clay-enrichment.md`](../docs/clay-enrichment.md). "
+          "Summary stats only; names and emails stay in `data/private/`.", "",
           table(["Step", "Advisers", "Coverage"], [(s, v, pct(v, n)) for s, v in funnel]), "",
           f"**{int((usable & finance).sum())} of the {int(usable.sum())} usable emails belong to a finance-titled "
           "contact** (CFO, controller, treasurer, VP finance).", "",
-          "## QA of returned emails", "",
-          "Clay's validation confirms an address will accept mail, not that it is the right person. "
-          "Every returned email is checked against the contact's name and the firm's verified domain.", "",
+          "## Checking the emails Clay returned", "",
+          "Clay's validation confirms an address accepts mail, not that it belongs to the right person. "
+          "So every email is also checked against the contact's name and the firm's verified domain.", "",
           table(["Check", "Emails"], qa), "",
-          "**Which provider found the email (first hit in the waterfall):**", "",
+          "**Which provider found each email (the first one in the waterfall to find it):**", "",
           table(["Provider", "Emails"], list(provider.items())), "",
           "**Where the contact came from:**", "", table(["Source", "Advisers"], list(source.items())), ""]
     if credits_used:
         md += ["## Cost", "",
                f"- **{credits_used:g} Clay data credits** in total: {credits_used / n:.2f} per adviser, "
                f"**{credits_used / max(int(usable.sum()), 1):.2f} per usable email**."
-               + (f" Plus {actions_used:g} Clay actions." if actions_used else ""),
-               "- Domains and contacts cost nothing: they come from SEC filings, manual verification and a DNS check.", ""]
+               + (f" Plus {actions_used:g} Clay actions, which Clay counts separately from credits." if actions_used else ""),
+               "- Domains and contacts cost nothing. They come from SEC filings, research checked by hand, and a DNS check "
+               "that each domain can receive email.", ""]
     (OUT / "enrichment.md").write_text("\n".join(md) + "\n")
     for s_, v in funnel + qa:
         print(f"{s_}: {v}")

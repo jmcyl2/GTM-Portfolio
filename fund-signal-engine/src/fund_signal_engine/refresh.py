@@ -162,26 +162,28 @@ def write_report(adv: pd.DataFrame, n_shortlist: int):
     dates = pd.to_datetime(adv.filed, format="%m/%d/%Y", errors="coerce").dropna()
     md = [
         "[← Findings](findings.md)", "",
-        "# Tier A refresh: current Form ADV filings", "",
-        f"The bulk fund-level data ends Dec 2024. Each Tier A adviser's current Form ADV was pulled and its "
-        f"private-fund section parsed. Filings span {dates.min():%b %Y} to {dates.max():%b %Y} "
+        "# Forward test: Tier A firms' current Form ADV filings", "",
+        f"The SEC's bulk fund data ends in Dec 2024. To see what happened since, each Tier A adviser's current Form ADV "
+        f"was downloaded and its private-fund section read. Those filings are dated {dates.min():%b %Y} to {dates.max():%b %Y} "
         f"(median {dates.median():%b %Y})." if len(dates) else "", "",
-        "## Status since 2024", "",
+        "## What changed since 2024", "",
         table(["Status", "Advisers", "Share"], [(s, c, pct(c, n)) for s, c in status.items()]), "",
-        "- **hired administrator**: a PE/RE fund that was self-administered in 2024 now reports an outside administrator. "
-        "These advisers have already bought, so they come off the outreach list.",
-        "- **new fund uses administrator**: existing funds are unchanged, but a fund launched since 2024 uses an administrator.",
-        "- **still self-administered**: still in market.", "",
-        f"**Outreach shortlist: {n_shortlist} advisers** pass the v2 filter and are still fully self-administered "
-        "(`data/private/shortlist.csv`, not committed). This is the input to enrichment.", "",
-        "## Live check of the v2 filter", "",
-        "These outcomes happened after every year the model was trained or tested on, so they are a genuine "
-        "forward test. Small numbers: read as directional.", "",
+        "- **hired administrator**: a PE/RE fund that did its own books in 2024 now reports an outside administrator. "
+        "These advisers have already bought, so they come off the contact list.",
+        "- **new fund uses administrator**: the existing funds haven't changed, but a fund launched since 2024 uses an administrator. "
+        "These come off the list too.",
+        "- **still self-administered**: all PE/RE funds still do their own books, so the firm is still a potential customer.", "",
+        f"**Contact list: {n_shortlist} advisers** pass the v2 filter and still do all their own books "
+        "(`data/private/shortlist.csv`, not committed). These go on to contact finding.", "",
+        "## Did the v2 filter predict who bought?", "",
+        "All of this happened after the years the model was trained and tested on, so it's a real test of its "
+        "predictions. The numbers are small, so treat the result as a strong sign rather than proof.", "",
         table(["Group", "Advisers", "Bought administration since 2024", "Rate"], by_filter), "",
-        f"Fisher's exact test, one-sided: p = {p_value:.3f}. "
-        "'Bought' means either status above: an existing fund hired an administrator, or a new fund launched with one.", "",
-        f"Parse check: every adviser's parsed fund count matches the filing's own 'Total Funds' figure "
-        f"({mismatches} mismatches).", "",
+        f"Fisher's exact test, one-sided: p = {p_value:.3f}. That's the chance of a gap at least this big if the filter "
+        "were useless. 'Bought' means either of the changes above: an existing fund hired an administrator, or a new "
+        "fund launched with one.", "",
+        f"Check on the PDF reading: for each adviser, the number of funds the script found is compared with the "
+        f"'Total Funds' figure in the filing itself ({mismatches} mismatches).", "",
     ]
     (OUT / "refresh.md").write_text("\n".join(md) + "\n")
     print(status.to_string())

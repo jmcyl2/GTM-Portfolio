@@ -31,11 +31,11 @@ FEATURES = {
     "Audited financials sent to investors": lambda d: d.fs_distributed,
     "Fund of funds": lambda d: d.fund_of_funds,
     "Master/feeder structure": lambda d: d.master_feeder,
-    "Qualified purchasers only (3(c)(7))": lambda d: d.qualified_purchasers_only,
-    "Uses placement agent": lambda d: d.uses_placement_agent,
-    "Real estate (vs PE)": lambda d: d.is_real_estate,
-    "SEC-registered adviser (vs exempt)": lambda d: d.sec_registered,
-    "Adviser already uses an administrator elsewhere": lambda d: d.adviser_uses_admin_elsewhere,
+    "Only takes qualified purchasers (large or very wealthy investors)": lambda d: d.qualified_purchasers_only,
+    "Uses a placement agent to raise money": lambda d: d.uses_placement_agent,
+    "Real estate fund (vs PE)": lambda d: d.is_real_estate,
+    "Adviser fully SEC-registered (vs exempt reporting)": lambda d: d.sec_registered,
+    "Adviser already uses an administrator for another fund": lambda d: d.adviser_uses_admin_elsewhere,
     "Number of investors (log)": lambda d: np.log1p(d.owners.fillna(0)),
     "Fund assets (log)": lambda d: np.log1p(d.gross_assets.fillna(0)),
     "Adviser private fund assets (log)": lambda d: np.log1p(d.adviser_assets.fillna(0)),
@@ -45,7 +45,7 @@ FEATURES = {
     "% owned by adviser/related": lambda d: d.pct_owned_related.fillna(0) / 100,
     "% assets valued by third party": lambda d: d.pct_third_party_valued.fillna(0) / 100,
     "Fund age (years, capped at 10)": lambda d: d.fund_age.clip(upper=10),
-    "Asset growth YoY (clipped)": lambda d: d.asset_growth.fillna(0).clip(-1, 3),
+    "Fund asset growth over the year (capped)": lambda d: d.asset_growth.fillna(0).clip(-1, 3),
 }
 
 
@@ -60,7 +60,7 @@ def lift_table(y, scores, buckets=5):
     for q in range(buckets - 1, -1, -1):
         mask = (ranks == q).to_numpy()
         rate = y[mask].mean()
-        rows.append((f"Q{buckets - q}" + (" (highest)" if q == buckets - 1 else " (lowest)" if q == 0 else ""),
+        rows.append((f"{buckets - q}" + (" (highest scores)" if q == buckets - 1 else " (lowest scores)" if q == 0 else ""),
                      f"{mask.sum():,}", f"{100 * rate:.1f}%", f"{rate / base:.2f}x"))
     return rows
 
@@ -117,40 +117,43 @@ def main():
 
     md = [
         "[← Findings](findings.md)", "",
-        "# Score v2: learned on 2014-2017, tested on 2018-2021", "",
-        "The pre-registered v1 score barely beat random. v2 asks which signals actually predict a self-administered "
-        "PE/RE fund hiring an outside administrator within 3 years. To keep the test honest, it learns only from funds "
-        f"whose base year is {TRAIN_YEARS[0]}-{TRAIN_YEARS[1]} and is graded on funds from "
-        f"{TEST_YEARS[0]}-{TEST_YEARS[1]} that it never saw. v1 is graded on the same test set.", "",
-        "## Results on the held-out test set", "",
-        table(["", "v1 (pre-registered)", "v2 (learned)"], [
-            ("AUC (0.5 = random, 1.0 = perfect)", f"{auc_v1:.3f}", f"{auc_v2:.3f}"),
+        "# Score v2: learned from 2014-2017 funds, tested on 2018-2021", "",
+        "The v1 score, written down before looking at any results, barely beat random. v2 lets a model work out which "
+        "signals predict that a PE/RE fund doing its own books will hire an outside administrator within 3 years. "
+        f"To keep the test honest, it learns only from funds whose starting year is {TRAIN_YEARS[0]}-{TRAIN_YEARS[1]}, "
+        f"and is graded on {TEST_YEARS[0]}-{TEST_YEARS[1]} funds it never saw. v1 is graded on the same funds.", "",
+        "## Results on funds the model never saw", "",
+        table(["", "v1 (written in advance)", "v2 (learned)"], [
+            ("AUC (0.5 = coin flip, 1.0 = perfect)", f"{auc_v1:.3f}", f"{auc_v2:.3f}"),
         ]), "",
-        f"Train: {len(train):,} funds ({100 * y_train.mean():.1f}% switched). "
-        f"Test: {len(test):,} funds ({100 * y_test.mean():.1f}% switched). "
-        f"Train AUC is {auc_train:.3f} against {auc_v2:.3f} on test: part of what the model learned from the earlier "
-        "years did not carry over to the later ones. The test figure is the one to trust.", "",
-        "**v2 test-set switch rate by score quintile:**", "",
-        table(["Quintile", "Funds", "Switched within 3 yrs", "vs average"], lift_table(y_test, p_test)), "",
-        f"**v2 works as an exclusion filter, not a winner-picker.** The bottom 40% of funds by score switched at "
-        f"{100 * bottom_rate:.1f}%, against {100 * upper_rate:.1f}% for the top 60% ({upper_rate / bottom_rate:.1f}x). "
-        "Within the top 60% the score barely separates funds, so ranking inside it adds little; "
-        "dropping the bottom 40% does.", "",
-        "## What predicts a switch", "",
-        "Standardized logistic-regression weights (positive = more likely to hire an administrator; "
-        "magnitude = effect of a one-standard-deviation change, holding the others fixed):", "",
+        "AUC measures how well a score ranks funds that hired an administrator above funds that didn't.", "",
+        f"Training set: {len(train):,} funds ({100 * y_train.mean():.1f}% hired an administrator). "
+        f"Test set: {len(test):,} funds ({100 * y_test.mean():.1f}%). "
+        f"The model scores {auc_train:.3f} on the funds it learned from but {auc_v2:.3f} on the test funds, so some of "
+        "what it picked up from the earlier years didn't hold in the later ones. The test figure is the honest one.", "",
+        "**v2 on the test set, with funds split into five equal groups by score:**", "",
+        table(["Group", "Funds", "Hired admin within 3 yrs", "vs average"], lift_table(y_test, p_test)), "",
+        f"**v2 is good at ruling funds out, not at picking the best ones.** The lowest-scoring 40% of funds hired an "
+        f"administrator {100 * bottom_rate:.1f}% of the time, against {100 * upper_rate:.1f}% for the rest "
+        f"({upper_rate / bottom_rate:.1f}x). Within the top 60% the score barely separates funds, so its value is in "
+        "dropping the bottom 40%, not in ranking the rest.", "",
+        "## What predicts hiring an administrator", "",
+        "Logistic regression weights, standardized so they can be compared with each other. Positive means more "
+        "likely to hire an administrator, negative means less likely. A bigger number means a bigger effect from a "
+        "typical-sized change in that signal (one standard deviation), with the others held fixed. \"(log)\" means "
+        "the value was log-scaled before fitting.", "",
         table(["Signal", "Weight", "Direction"],
               [(n, f"{w:+.2f}", "more likely" if w > 0 else "less likely") for n, w in coefs.items()]), "",
         "## Applied to today's targets", "",
-        f"Each Tier A/B adviser is scored by its highest-scoring self-administered fund (fund detail as of "
-        f"its latest bulk filing). Tier A's {len(tier_a)} advisers range from "
-        f"{100 * tier_a.p_switch.min():.1f}% to {100 * tier_a.p_switch.max():.1f}% predicted 3-year switch probability "
-        f"(median {100 * tier_a.p_switch.median():.1f}%). Applying the test-set exclusion cutoff "
-        f"({100 * cutoff:.1f}%) keeps **{int(tier_a.passes_v2_filter.sum())} of {len(tier_a)}** Tier A advisers. "
-        "The ranked list is written to `data/private/targets_v2.csv` (not committed).", "",
-        "Caveats: the outcome is *hiring an administrator*, which is evidence of willingness to pay for the close, "
-        "but not of demand for any specific product. Funds that stopped reporting are excluded. Probabilities are "
-        "calibrated to the training period's base rate, which is lower than the test period's.",
+        f"Each Tier A/B adviser gets the score of its highest-scoring fund that does its own books (using fund details "
+        f"from its latest bulk filing). Tier A's {len(tier_a)} advisers range from a "
+        f"{100 * tier_a.p_switch.min():.1f}% to a {100 * tier_a.p_switch.max():.1f}% predicted chance of hiring an "
+        f"administrator within 3 years (median {100 * tier_a.p_switch.median():.1f}%). The cut-off that marks the bottom "
+        f"40% on the test set is {100 * cutoff:.1f}%, and **{int(tier_a.passes_v2_filter.sum())} of {len(tier_a)}** "
+        "Tier A advisers are above it. The ranked list is written to `data/private/targets_v2.csv` (not committed).", "",
+        "Caveats: the outcome measured is *hiring an administrator*. That shows a fund will pay someone to do its "
+        "accounting, not that it wants any particular product. Funds that stopped filing are left out. The predicted "
+        "percentages are tuned to the training years, when fewer funds switched than in the test years, so they run low.",
     ]
     (OUT / "score_v2.md").write_text("\n".join(md) + "\n")
     print(f"v1 test AUC {auc_v1:.3f} | v2 test AUC {auc_v2:.3f} (train {auc_train:.3f})")

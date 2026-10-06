@@ -1,23 +1,23 @@
 # GTM Portfolio
 
-Joseph Leung's go-to-market engineering projects. Each one runs on real data and is checked against real outcomes, not demo data.
+Joseph Leung's go-to-market engineering projects. Each one uses real data, and each is checked against what actually happened.
 
-Every folder is a standalone project with its own README, code, setup and results.
+Each folder is a separate project with its own README, code, setup and results.
 
 ## Projects
 
 | Project | What it does | Stack | Status |
 |---|---|---|---|
-| [**Fund Signal Engine**](fund-signal-engine/) | **Who should a fund-accounting business sell to first?** Reads 2M public SEC fund records to find small PE/RE funds that still do their own books, ranks them on likelihood to pay for help, and proves the ranking on what happened next (top-ranked firms bought at 2x the rate, p = 0.011). Then finds each firm's finance contact: 41 verified emails from 50 firms for 54 Clay credits. | Python · DuckDB · SQL · scikit-learn · Clay · SEC EDGAR | Targeting, ranking, forward test and enrichment shipped; personalized openers next |
+| [**Fund Signal Engine**](fund-signal-engine/) | **Which small investment funds should a fund-accounting business contact first?** Goes through 2M public SEC fund records to find small PE and real estate funds that still do their own books, and scores which are likely to pay for help. Tested on what those firms did next: firms that passed the score's filter hired outside help at twice the rate of those that failed (20% vs 9%, p = 0.011). Then finds each firm's finance contact: 41 verified emails from 50 firms for 54 Clay credits. | Python · DuckDB · SQL · scikit-learn · Clay · SEC EDGAR | Targeting, scoring, forward test and contact finding done; personalized opening lines next |
 
 ## How each project is laid out
 
 ```
 <project>/
-├── README.md          problem, approach, results, how to run
-├── outputs/           committed results (aggregates only)
+├── README.md          the problem, the approach, results, how to run
+├── outputs/           committed results (summary stats only)
 ├── src/               code
-└── data/              local only, gitignored (raw pulls + contact-level output)
+└── data/              local only, not committed (raw downloads + contact data)
 ```
 
-No personal or contact-level data is committed. Anything identifying stays in each project's gitignored `data/` folder.
+No personal or contact data is committed. Anything that identifies a person or firm stays in each project's `data/` folder, which git ignores.

@@ -13,11 +13,11 @@
     "Audited financials sent to investors",
     "Fund of funds",
     "Master/feeder structure",
-    "Qualified purchasers only (3(c)(7))",
-    "Uses placement agent",
-    "Real estate (vs PE)",
-    "SEC-registered adviser (vs exempt)",
-    "Adviser already uses an administrator elsewhere",
+    "Only takes qualified purchasers (large or very wealthy investors)",
+    "Uses a placement agent to raise money",
+    "Real estate fund (vs PE)",
+    "Adviser fully SEC-registered (vs exempt reporting)",
+    "Adviser already uses an administrator for another fund",
     "Number of investors (log)",
     "Fund assets (log)",
     "Adviser private fund assets (log)",
@@ -27,7 +27,7 @@
     "% owned by adviser/related",
     "% assets valued by third party",
     "Fund age (years, capped at 10)",
-    "Asset growth YoY (clipped)"
+    "Fund asset growth over the year (capped)"
   ],
   "scaler_mean": [
     0.862694,

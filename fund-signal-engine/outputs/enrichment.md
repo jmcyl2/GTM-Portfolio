@@ -1,32 +1,32 @@
 [← Findings](findings.md)
 
-# Enrichment funnel
+# Finding contacts and emails
 
-The top 50 of the 63 shortlisted advisers by v2 score (the Clay trial caps a table at 50 rows). Domains and contacts come from public SEC data first; Clay runs only the work-email waterfall. Method: [`docs/clay-enrichment.md`](../docs/clay-enrichment.md). Aggregates only; contact-level output stays in `data/private/`.
+The top 50 of the 63 advisers on the contact list, by v2 score (Clay's free trial limits a table to 50 rows). Company domains and contact names come from SEC filings first, at no cost. Clay is only used to find work emails, with its waterfall: it tries one email provider after another until one finds a verified address. Method: [`docs/clay-enrichment.md`](../docs/clay-enrichment.md). Summary stats only; names and emails stay in `data/private/`.
 
 | Step | Advisers | Coverage |
 |---|---|---|
 | Advisers enriched | 50 | 100% |
-| Usable company mail domain (ADV website, or verified by research; MX checked) | 45 | 90% |
-| Named contact from SEC filings (Form ADV Schedule A / Item 1.J) | 49 | 98% |
-| Email returned by the Clay waterfall (Conservative validation) | 42 | 84% |
-| **Usable after QA** | 41 | 82% |
+| Company domain that can receive email (from the filing or found by research, MX record checked) | 45 | 90% |
+| Named contact from SEC filings (Form ADV Schedule A or Item 1.J) | 49 | 98% |
+| Email found by Clay's waterfall (Conservative setting) | 42 | 84% |
+| **Usable after my checks** | 41 | 82% |
 
 **14 of the 41 usable emails belong to a finance-titled contact** (CFO, controller, treasurer, VP finance).
 
-## QA of returned emails
+## Checking the emails Clay returned
 
-Clay's validation confirms an address will accept mail, not that it is the right person. Every returned email is checked against the contact's name and the firm's verified domain.
+Clay's validation confirms an address accepts mail, not that it belongs to the right person. So every email is also checked against the contact's name and the firm's verified domain.
 
 | Check | Emails |
 |---|---|
 | On the verified company domain | 34 |
-| On a different domain (firm's mail domain or an affiliate) | 4 |
-| Firm had no verified domain; matched from company name | 3 |
-| Rejected: personal/free-mail address | 1 |
+| On a different domain (the firm's separate mail domain, or an affiliate's) | 4 |
+| Firm had no verified domain; Clay matched it from the company name | 3 |
+| Rejected: personal address (Gmail, Yahoo, etc.) | 1 |
 | Rejected: mailbox doesn't match the contact's name | 0 |
 
-**Which provider found the email (first hit in the waterfall):**
+**Which provider found each email (the first one in the waterfall to find it):**
 
 | Provider | Emails |
 |---|---|
@@ -46,6 +46,6 @@ Clay's validation confirms an address will accept mail, not that it is the right
 
 ## Cost
 
-- **54.1 Clay data credits** in total: 1.08 per adviser, **1.32 per usable email**. Plus 104 Clay actions.
-- Domains and contacts cost nothing: they come from SEC filings, manual verification and a DNS check.
+- **54.1 Clay data credits** in total: 1.08 per adviser, **1.32 per usable email**. Plus 104 Clay actions, which Clay counts separately from credits.
+- Domains and contacts cost nothing. They come from SEC filings, research checked by hand, and a DNS check that each domain can receive email.
 
