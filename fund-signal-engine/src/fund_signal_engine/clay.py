@@ -141,7 +141,9 @@ def report(credits_used: float | None):
     source = df.loc[has("person_name"), COLS["person_source"]].fillna("unknown").value_counts()
     provider = df.loc[has("email"), COLS["email_provider"]].fillna("unknown").value_counts()
     md = ["[← Findings](findings.md)", "", "# Enrichment funnel (Clay waterfall)", "",
-          f"{n} shortlisted advisers, enriched in Clay following [`docs/clay-enrichment.md`](../docs/clay-enrichment.md). "
+          f"{n} of the {len(pd.read_csv(PRIVATE / 'shortlist.csv'))} shortlisted advisers (the top {n} by v2 score; "
+          "the Clay trial caps a table at 50 rows), enriched in Clay following "
+          "[`docs/clay-enrichment.md`](../docs/clay-enrichment.md). "
           "Aggregates only; contact-level output stays in `data/private/`.", "",
           table(["Step", "Advisers", "Coverage"], [(s, v, pct(v, n)) for s, v in steps]), "",
           "**Where the contact came from:**", "", table(["Source", "Advisers"], list(source.items())), "",
