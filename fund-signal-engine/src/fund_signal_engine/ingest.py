@@ -34,6 +34,8 @@ ADV_TABLES = {
     "ia_admins": "IA_Schedule_D_7B1A26_2011",
     "era_contacts": "ERA_ADV_1J_1K_2011",
     "ia_contacts": "IA_ADV_1J_1K_2011",
+    "era_owners": "ERA_Schedule_A_B_2011",   # Schedule A/B: executive officers and owners, with titles
+    "ia_owners": "IA_Schedule_A_B_2011",
 }
 FORMD_TABLES = ["FORMDSUBMISSION", "ISSUERS", "OFFERING", "RELATEDPERSONS"]
 

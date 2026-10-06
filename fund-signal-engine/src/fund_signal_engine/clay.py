@@ -3,9 +3,11 @@
   fse-clay push      send each shortlisted adviser to a Clay table via its webhook
   fse-clay report    read the Clay CSV export and write the enrichment funnel
 
-Clay does the waterfall (domain -> person -> email -> verification); the build
-steps are in docs/clay-enrichment.md. This module owns the hand-off in and the
-measurement out, so the funnel numbers are reproducible from the export.
+Domains and contacts are resolved from public SEC data first (contacts.py), so
+Clay only does what it is best at: LinkedIn matching and the work-email
+waterfall with verification. Build steps: docs/clay-enrichment.md. This module
+owns the hand-off in and the measurement out, so the funnel numbers are
+reproducible from the export.
 """
 
 import argparse
@@ -22,6 +24,12 @@ import pandas as pd
 from . import sec
 from .build import OUT, PRIVATE, pct, table
 from .ingest import DB
+
+TABLE_CAP = 50  # Clay trial tables hold 50 rows
+PAYLOAD = ["shortlist_rank", "crd", "company_name", "state", "domain_final", "domain_source", "domain_accepts_mail",
+           "linkedin_company_url", "contact_first_name", "contact_last_name", "contact_full_name",
+           "contact_title", "contact_function", "contact_source", "private_fund_assets_musd",
+           "pe_funds", "re_funds", "all_funds_audited", "p_buy_admin_3yr", "sec_profile_url"]
 
 EXPORT = PRIVATE / "clay_export.csv"
 SUFFIXES = {"JR", "SR", "II", "III", "IV", "CPA", "CFA", "ESQ"}
@@ -82,17 +90,20 @@ def push(dry_run: bool, limit: int | None):
     url = os.environ.get("CLAY_WEBHOOK_URL", "").strip()
     if not url and not dry_run:
         raise SystemExit("Set CLAY_WEBHOOK_URL in .env (Clay table -> Import -> Webhook).")
-    rows = shortlist_rows()[:limit]
-    log = PRIVATE / "clay_pushed.jsonl"
+    from .contacts import resolve
+    rows = resolve(shortlist_rows()[:limit or TABLE_CAP])
+    # one log per destination table, so a new webhook gets a full push
+    log = PRIVATE / f"clay_pushed_{url.rstrip('/').rsplit('-', 1)[-1] if url else 'dry'}.jsonl"
     done = {json.loads(l)["crd"] for l in log.read_text().splitlines()} if log.exists() else set()
     sent = 0
     for row in rows:
         if row["crd"] in done:
             continue
+        payload = {k: row[k] for k in PAYLOAD}
         if dry_run:
-            print(json.dumps(row))
+            print(json.dumps(payload))
             continue
-        req = urllib.request.Request(url, data=json.dumps(row).encode(), method="POST",
+        req = urllib.request.Request(url, data=json.dumps(payload).encode(), method="POST",
                                      headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=30) as resp:
             if resp.status >= 300:
@@ -104,12 +115,11 @@ def push(dry_run: bool, limit: int | None):
     print(f"pushed {sent} rows ({len(done)} already sent earlier, {len(rows)} on the shortlist)")
 
 
-# Column names the Clay table is asked to use (docs/clay-enrichment.md).
+# Column names in the Clay export: pushed fields plus the outputs the guide names.
 COLS = {
-    "domain_found": "Domain (final)",
-    "person_name": "Contact name (final)",
-    "person_title": "Contact title",
-    "person_source": "Contact source",
+    "domain_found": "domain_final",
+    "person_name": "contact_full_name",
+    "person_source": "contact_source",
     "linkedin": "Contact LinkedIn",
     "email": "Work email",
     "email_status": "Email status",
@@ -119,20 +129,24 @@ COLS = {
 
 def report(credits_used: float | None):
     df = pd.read_csv(EXPORT, dtype=str)
-    missing = [c for c in COLS.values() if c not in df.columns]
+    required = ["domain_found", "person_name", "email", "email_status"]
+    missing = [COLS[c] for c in required if COLS[c] not in df.columns]
     if missing:
         raise SystemExit(f"Export is missing columns {missing}; rename them in Clay to match docs/clay-enrichment.md.")
+    for optional in ("linkedin", "email_provider", "person_source"):
+        if COLS[optional] not in df.columns:
+            df[COLS[optional]] = ""
     has = lambda c: df[COLS[c]].fillna("").str.strip().ne("")
     n = len(df)
-    domain_in = df["domain"].fillna("").str.strip().ne("")
+    domain_in = df["domain_source"].fillna("").eq("SEC Form ADV website")
     status = df[COLS["email_status"]].fillna("").str.lower()
     verified = has("email") & status.str.contains("valid|verified|deliverable") & ~status.str.contains("invalid|undeliverable")
     risky = has("email") & status.str.contains("catch|risky|accept")
     steps = [
         ("Advisers on the shortlist", n),
         ("Company domain known (from ADV)", int(domain_in.sum())),
-        ("Company domain known (after Clay)", int(has("domain_found").sum())),
-        ("Named contact", int(has("person_name").sum())),
+        ("Company domain known (after manual verification)", int(has("domain_found").sum())),
+        ("Named contact from SEC filings", int(has("person_name").sum())),
         ("...with LinkedIn profile", int((has("person_name") & has("linkedin")).sum())),
         ("Work email found", int(has("email").sum())),
         ("...verified deliverable", int(verified.sum())),
