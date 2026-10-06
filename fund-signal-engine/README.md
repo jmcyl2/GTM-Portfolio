@@ -26,9 +26,9 @@ The SEC knows, though. Investment advisers file a form called Form ADV that list
 - **It's cheap.** The SEC data is free. Clay is only used at the last step, finding emails, at about 1.3 credits per usable address.
 - **It found a real risk for the business.** Most firms that do their own books look like the firms that historically never outsourced it. Anyone selling into this market should know that before sending a single email.
 
-Start here: [results summary](outputs/findings.md) · [scoring model](outputs/score_v2.md) · [forward test](outputs/refresh.md) · [email enrichment](outputs/enrichment.md)
+Start here: [results summary](outputs/findings.md) · [scoring model](outputs/score_v2.md) · [forward test](outputs/refresh.md) · [email enrichment](outputs/enrichment.md) · [opening lines](outputs/openers.md)
 
-<sub>Nothing here sends email. The project stops at a checked contact list.</sub>
+<sub>Nothing here sends email. The project stops at a checked contact list and drafted openers that are never sent.</sub>
 
 ## The data
 
@@ -99,6 +99,15 @@ The top 50 of the 63 firms were run (Clay's free trial limits a table to 50 rows
   <img src="docs/img/clay-waterfall-providers.png" width="49%" alt="Clay work-email waterfall: provider sequence">
 </p>
 
+### Opening lines: drafted, never sent
+
+Examples and rules in [`outputs/openers.md`](outputs/openers.md).
+
+- **One opener for each firm with a usable email: 41 drafts.** Each one starts from a fact in that firm's own filing, like "all three of your funds are audited and none use an outside administrator". The next line depends on the contact's job title.
+- **Written by rules, not by an AI writing freely.** Every statement about a firm comes from its filing, so nothing about a real firm can be made up.
+- **The ask is a 15-minute research conversation, with no sales pitch.**
+- **What's public:** the rules and a few examples with the firm and person replaced by placeholders, sizes shown as ranges and locations removed. The 41 real drafts stay in `data/private/`.
+
 ## How it runs
 
 ```
@@ -108,6 +117,7 @@ SEC Form D (last 4 qtrs) ─┘                     ├─► backtest + market 
                                                  └─► score v2 (train 2014–17, test 2018–21) ─► outputs/score_v2.md
 current per-firm Form ADV PDFs (2025–26) ─► refresh Tier A ─► forward test + shortlist ─► outputs/refresh.md
 shortlist ─► contacts.py (Schedule A + verified domains + MX) ─► Clay email waterfall ─► QA ─► outputs/enrichment.md
+usable emails + filing facts ─► openers.py (rules pick the opening fact) ─► drafts (private) + examples ─► outputs/openers.md
 ```
 
 - `ingest.py` pulls just the tables it needs out of the SEC's multi-GB bulk zip files, reading only those parts instead of downloading everything. It follows the SEC's rules: an identified User-Agent, a rate limit, and retries.
@@ -116,6 +126,7 @@ shortlist ─► contacts.py (Schedule A + verified domains + MX) ─► Clay em
 - `score_v2.py` trains the v2 model on 2014–17 funds, tests it on 2018–21, compares it with v1, and scores today's targets.
 - `refresh.py` downloads each Tier A firm's current Form ADV as a PDF and reads its private-fund section with PyMuPDF. The Yes/No checkboxes don't come through as text, so it reads them from the page layout instead. Then it builds the shortlist.
 - `contacts.py` picks each firm's contact from Schedule A and checks that each domain can receive email. `clay.py` sends rows to Clay through a webhook, then checks the emails Clay returns.
+- `openers.py` writes one draft opener per firm from facts in its filing and the contact's title. Drafts go to `data/private/`; anonymized examples go to `outputs/openers.md`.
 
 ## Run it
 
@@ -129,6 +140,7 @@ uv run fse-score
 uv run fse-refresh    # ~10 min: one PDF per Tier A firm, cached under data/
 uv run fse-clay push  # needs CLAY_WEBHOOK_URL in .env; then set up the waterfall per docs/
 uv run fse-clay report --credits <used> --actions <used>
+uv run fse-openers    # drafts to data/private/, anonymized examples to outputs/
 ```
 
 ## Data handling
@@ -141,6 +153,6 @@ Everything comes from public SEC filings. The repo only holds summary statistics
 2. ~~Score v2, trained and tested on separate years~~
 3. ~~Update Tier A from each firm's current Form ADV, plus a forward test~~
 4. ~~Contacts from SEC filings + Clay email waterfall, with QA and cost per usable email~~
-5. Personalized opening lines written from each fund's own filing data (drafted, not sent)
+5. ~~Personalized opening lines written from each fund's own filing data (drafted, not sent)~~
 6. Daily job in n8n: new filings → remove duplicates → score → Slack alert
 7. Public dashboard: a map of the fund administration market
