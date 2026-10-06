@@ -6,7 +6,7 @@ A go-to-market signal engine built entirely on public SEC data. It finds small p
 
 The buyer it targets is the controller or CFO at a sub-$500M PE/RE fund, plus the boutique fund administrators who serve them. The pipeline stops before outreach: nothing here sends email.
 
-**Results: [`outputs/findings.md`](outputs/findings.md) · [`outputs/score_v2.md`](outputs/score_v2.md)**
+**Results: [`outputs/findings.md`](outputs/findings.md) · [`outputs/score_v2.md`](outputs/score_v2.md) · [`outputs/refresh.md`](outputs/refresh.md)**
 
 ## Why this data
 
@@ -46,7 +46,18 @@ v1 failed, so v2 learns which signals matter from **20 fund attributes** in the 
 - **v2 beats v1 out of sample: AUC 0.597 vs 0.528** (0.5 is random). That's a modest gain, reported as it is.
 - **It's an exclusion filter, not a winner-picker.** The bottom 40% by score switched at 7.6%, the top 60% at 16.0% (2.1x). Within the top 60% the score barely separates funds.
 - **The strongest signals:** the fund is limited to institutional "qualified purchasers" (+); the adviser already uses an administrator for other funds (+); the fund is a fund of funds (+). Older funds and real-estate funds are *less* likely to switch. The number of investors, my strongest prior, barely matters.
-- **Applied to today's list, only 79 of 278 Tier A advisers pass the filter.** Most managers that run their own close look like the funds that historically never outsourced it. In other words, the market that does its own close is largely the market least likely to pay someone else to do it. That's the most useful thing this project found, and it's a question to take into discovery calls rather than something to assume away.
+- **Applied to today's list, only 79 of the 277 scoreable Tier A advisers pass the filter.** Most managers that run their own close look like the funds that historically never outsourced it. In other words, the market that does its own close is largely the market least likely to pay someone else to do it. That's the most useful thing this project found, and it's a question to take into discovery calls rather than something to assume away.
+
+### Forward test: what happened after 2024
+
+Full numbers are in [`outputs/refresh.md`](outputs/refresh.md).
+
+The bulk data stops at Dec 2024, so each Tier A adviser's **current** Form ADV (filed as late as Sep 2026) was pulled and parsed. That brings the list up to date, and it's also a real forward test: these outcomes happened after every year the model saw.
+
+- **The v2 filter held up on new data.** 20% of advisers that passed it bought fund administration after 2024, against 9% of those that failed (one-sided Fisher's exact p = 0.011). That matches the ~2x lift from the backtest.
+- **34 of 277 Tier A advisers bought since 2024.** 19 moved an existing fund to an administrator and 15 launched a new fund with one. They come off the list.
+- **That leaves an outreach shortlist of 63 advisers** that pass the filter and are still fully self-administered. Those 63 go into enrichment.
+- **The parser is checked against the filings themselves.** Every adviser's parsed fund count matches the "Total Funds" figure it reported.
 
 ## Pipeline
 
@@ -55,12 +66,14 @@ SEC bulk ADV (2011–2024) ─┐
 SEC adviser roster (today) ┼─► DuckDB ─► staging ─► targets (Tier A/B/C) ─► private target list
 SEC Form D (last 4 qtrs) ─┘                     ├─► backtest + market map ─► outputs/findings.md
                                                  └─► score v2 (train 2014–17, test 2018–21) ─► outputs/score_v2.md
+current per-firm Form ADV PDFs (2025–26) ─► refresh Tier A ─► forward test + shortlist ─► outputs/refresh.md
 ```
 
 - `ingest.py` pulls only the tables it needs out of the multi-GB SEC bulk zips (HTTP range reads, not full downloads), politely: an identified User-Agent, a rate limit, and retries.
 - `sql/` holds plain SQL models: staging, then targeting tiers, then the backtest.
 - `build.py` runs the models and writes the aggregate findings (committed) and the contact-level target list (gitignored).
 - `score_v2.py` fits the out-of-time logistic regression, compares it with v1, and ranks today's targets.
+- `refresh.py` pulls each Tier A firm's current Form ADV, parses its private-fund section (PyMuPDF; Yes/No checkboxes are read from structure because they don't survive text extraction), and builds the shortlist.
 
 ## Run it
 
@@ -71,6 +84,7 @@ echo 'SEC_USER_AGENT="Your Name you@example.com"' > .env   # SEC requires an ide
 uv run fse-ingest     # ~5 min, ~2 GB on disk under data/
 uv run fse-build
 uv run fse-score
+uv run fse-refresh    # ~10 min: one PDF per Tier A adviser, cached under data/
 ```
 
 ## Data handling
@@ -81,7 +95,7 @@ Everything comes from public SEC filings. The repo commits only aggregate statis
 
 1. ~~Targeting spine + backtest~~
 2. ~~Score v2 on an out-of-time split~~
-3. Refresh Tier A against current per-firm ADV filings (bulk fund detail ends Dec 2024)
+3. ~~Refresh Tier A against current per-firm ADV filings, plus a forward test~~
 4. Enrichment waterfall on a 50-row sample: domain → person → email → verification, with coverage and cost per step
 5. Personalized openers generated from each fund's own filing data (written, not sent)
 6. Daily n8n job: new filings → dedupe → score → Slack alert

@@ -21,7 +21,9 @@ WITH per_filing AS (
 SELECT o.*, year(o.filed_on) AS yr, p.adviser_funds, p.adviser_assets, p.adviser_funds_with_admin
 FROM fund_obs o JOIN per_filing p USING (filing_id, regime)
 WHERE nullif(o.fund_id, '') IS NOT NULL AND o.filed_on IS NOT NULL
-QUALIFY row_number() OVER (PARTITION BY o.fund_id, year(o.filed_on) ORDER BY o.filed_on DESC, o.filing_id DESC) = 1;
+-- tie-breakers make the pick deterministic when a fund appears twice in one filing
+QUALIFY row_number() OVER (PARTITION BY o.fund_id, year(o.filed_on)
+                           ORDER BY o.filed_on DESC, o.filing_id DESC, o.regime, o.reference_id, o.fund_name) = 1;
 
 -- Signals as of each fund-year, using only information available that year.
 CREATE OR REPLACE TABLE fund_features AS

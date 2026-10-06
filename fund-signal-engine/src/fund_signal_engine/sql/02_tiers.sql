@@ -4,7 +4,7 @@
 
 CREATE OR REPLACE TABLE latest_filing AS
 SELECT * FROM filings
-QUALIFY row_number() OVER (PARTITION BY crd ORDER BY filed_on DESC NULLS LAST, filing_id DESC) = 1;
+QUALIFY row_number() OVER (PARTITION BY crd ORDER BY filed_on DESC NULLS LAST, filing_id DESC, regime DESC) = 1;  -- same filing listed as ERA and IA: the IA registration is current
 
 CREATE OR REPLACE TABLE adviser_profile AS
 WITH funds AS (

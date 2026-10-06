@@ -102,7 +102,8 @@ def report(con) -> str:
            f"({hi_rate / lo_rate:.1f}x lift).**" if lo_rate else "", "",
            "Caveat: funds that stopped reporting within 3 years (wound down, merged) are excluded, "
            "so this measures switching among survivors.", "",
-           "v1 is kept as registered. A learned score tested out-of-time is in [score_v2.md](score_v2.md).", "",
+           "v1 is kept as registered. A learned score tested out-of-time is in [score_v2.md](score_v2.md); "
+           "a forward test on 2025-26 filings is in [refresh.md](refresh.md).", "",
            table(["Who won the switchers", "Funds"], winners), ""]
 
     # --- Form D

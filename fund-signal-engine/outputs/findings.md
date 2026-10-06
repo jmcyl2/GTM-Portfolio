@@ -81,7 +81,7 @@ Score is pre-registered in `sql/03_backtest.sql` (1 point each, fixed before out
 
 Caveat: funds that stopped reporting within 3 years (wound down, merged) are excluded, so this measures switching among survivors.
 
-v1 is kept as registered. A learned score tested out-of-time is in [score_v2.md](score_v2.md).
+v1 is kept as registered. A learned score tested out-of-time is in [score_v2.md](score_v2.md); a forward test on 2025-26 filings is in [refresh.md](refresh.md).
 
 | Who won the switchers | Funds |
 |---|---|
