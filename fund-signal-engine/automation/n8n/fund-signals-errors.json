@@ -1,0 +1,77 @@
+{
+  "name": "Fund signals: error alerts",
+  "nodes": [
+    {
+      "id": "76903235-4027-538e-bf66-e32b34cbf0f1",
+      "name": "On workflow error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "9327e388-16f1-5c50-bf7f-f452e0a6a4c6",
+      "name": "Format error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const e = $input.first().json;\nreturn [{ json: { slack: { text: `:x: Fund signals workflow failed: ${e.execution?.error?.message || 'unknown error'} (node: ${e.execution?.lastNodeExecuted || '?'}). ${e.execution?.url || ''}` } } }];"
+      }
+    },
+    {
+      "id": "b7aacb0a-410e-5184-9839-3dfbb52568ea",
+      "name": "Post error to Slack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/REPLACE_ME",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.slack) }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    }
+  ],
+  "connections": {
+    "On workflow error": {
+      "main": [
+        [
+          {
+            "node": "Format error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format error": {
+      "main": [
+        [
+          {
+            "node": "Post error to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

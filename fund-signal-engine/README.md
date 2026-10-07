@@ -156,5 +156,5 @@ Everything comes from public SEC filings. The repo only holds summary statistics
 3. ~~Update Tier A from each firm's current Form ADV, plus a forward test~~
 4. ~~Contacts from SEC filings + Clay email waterfall, with QA and cost per usable email~~
 5. ~~Personalized opening lines written from each fund's own filing data (drafted, not sent)~~
-6. Daily job in n8n: new filings → remove duplicates → score → Slack alert
+6. Daily job in n8n: new filings → remove duplicates → score → Slack alert (built and tested; [backtest](outputs/automation.md); live run starting)
 7. Public dashboard: a map of the fund administration market

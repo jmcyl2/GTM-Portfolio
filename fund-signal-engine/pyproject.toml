@@ -22,6 +22,7 @@ fse-score = "fund_signal_engine.score_v2:main"
 fse-refresh = "fund_signal_engine.refresh:main"
 fse-clay = "fund_signal_engine.clay:main"
 fse-openers = "fund_signal_engine.openers:main"
+fse-automation = "fund_signal_engine.automation:main"
 
 [build-system]
 requires = ["uv_build>=0.11.28,<0.12.0"]
