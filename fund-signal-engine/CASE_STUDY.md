@@ -2,6 +2,8 @@
 
 # Case study: finding the funds that still do their own books
 
+**[Open the live dashboard](https://fund-signal-engine.streamlit.app/)**
+
 <!-- Loom walkthrough: add the link here once recorded -->
 
 ## The problem
@@ -43,4 +45,4 @@ The SEC already records the answer. Every adviser's Form ADV lists each private 
 - Test the opener against discovery calls, which are the real proof of whether the pain exists.
 - Publish the fund-administration market map as a small public dashboard.
 
-**Go deeper:** [full write-up](README.md) · [results](outputs/findings.md) · [scoring model](outputs/score_v2.md) · [forward test](outputs/refresh.md) · [enrichment](outputs/enrichment.md) · [openers](outputs/openers.md) · [code](src/fund_signal_engine/)
+**Go deeper:** [live dashboard](https://fund-signal-engine.streamlit.app/) · [full write-up](README.md) · [results](outputs/findings.md) · [scoring model](outputs/score_v2.md) · [forward test](outputs/refresh.md) · [enrichment](outputs/enrichment.md) · [openers](outputs/openers.md) · [code](src/fund_signal_engine/)

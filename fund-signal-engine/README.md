@@ -2,7 +2,9 @@
 
 # Fund Signal Engine
 
-**Short on time? Read the [5-minute case study](CASE_STUDY.md).**
+**Short on time? Read the [5-minute case study](CASE_STUDY.md) or open the [live dashboard](https://fund-signal-engine.streamlit.app/).**
+
+[![Fund Signal Engine dashboard](docs/img/dashboard.png)](https://fund-signal-engine.streamlit.app/)
 
 Say you sell accounting services to small investment funds. Which funds should you contact first? This project works that out from free SEC data, then checks whether its picks were right.
 
