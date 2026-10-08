@@ -150,6 +150,8 @@ def build():
     for match, ua, slack_url, folder in builds:
         folder.mkdir(parents=True, exist_ok=True)
         main, errors = workflows(list_js.replace("__USER_AGENT__", ua), match, fmt, ua, slack_url)
+        if folder == PRIVATE / "n8n":  # make the importable copy unmistakable inside n8n
+            main["name"], errors["name"] = f"PRIVATE · {main['name']}", f"PRIVATE · {errors['name']}"
         (folder / "fund-signals-daily.json").write_text(json.dumps(main, indent=2))
         (folder / "fund-signals-errors.json").write_text(json.dumps(errors, indent=2))
     print(f"lookup: {len(lk)} names for {lk.crd.nunique()} advisers")
