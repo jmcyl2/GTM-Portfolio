@@ -34,7 +34,7 @@ for (const a of items.filter(a => a.type === 'summary')) {
   out.push({ json: { slack: { text:
     `:white_check_mark: Daily scan done. Days: ${days}. Form D filings checked: ${a.formD}, `
     + `fund offerings: ${a.funds}, matches: *${a.matched}* (${Object.keys(groups).length} alert${Object.keys(groups).length === 1 ? '' : 's'}), errors: ${a.errors}`
-    + (a.deferred ? `, deferred to next run: ${a.deferred}` : '')
+    + (a.deferred ? `, days deferred to next run: ${a.deferred}` : '')
     + (a.noIndexDays.length ? `, no SEC index (holiday?): ${a.noIndexDays.map(day).join(', ')}` : '')
     + `. Run #${a.runsSoFar}: ${a.matchesSoFar} matches and ${a.errorsSoFar} errors so far.` } } });
 }

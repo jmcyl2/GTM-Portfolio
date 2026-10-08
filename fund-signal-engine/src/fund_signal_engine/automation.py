@@ -36,7 +36,7 @@ FUND_FILTER = """INVESTMENTFUNDTYPE IN ('Private Equity Fund', 'Other Investment
 
 
 def norm(s) -> str:
-    """Same normalisation as automation/scan.js; keep the two in sync."""
+    """Same normalisation as automation/match.js; keep the two in sync."""
     s = re.sub(r"[^A-Z0-9 ]", " ", str(s or "").upper())
     return " ".join(SUFFIX.sub(" ", s).split())
 
@@ -85,25 +85,33 @@ def node(name, type_, version, position, parameters, **extra):
             "typeVersion": version, "position": position, "parameters": parameters, **extra}
 
 
-def workflows(scan_js: str, format_js: str, slack_url: str) -> tuple[dict, dict]:
+def workflows(list_js: str, match_js: str, format_js: str, user_agent: str, slack_url: str) -> tuple[dict, dict]:
     slack_post = lambda name, pos: node(name, "n8n-nodes-base.httpRequest", 4.2, pos, {
         "method": "POST", "url": slack_url, "sendBody": True, "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json.slack) }}", "options": {}},
         retryOnFail=True, maxTries=3, waitBetweenTries=3000)
+    flow = ["Weekdays 07:30", "List new Form D filings", "Fetch Form D", "Match against self-administered managers",
+            "Format Slack messages", "Post to Slack"]
     main = {
         "name": "Fund signals: daily SEC Form D scan",
         "nodes": [
-            node("Weekdays 07:30", "n8n-nodes-base.scheduleTrigger", 1.2, [0, 0],
+            node(flow[0], "n8n-nodes-base.scheduleTrigger", 1.2, [0, 0],
                  {"rule": {"interval": [{"field": "cronExpression", "expression": "30 7 * * 1-5"}]}}),
-            node("Scan SEC Form D filings", "n8n-nodes-base.code", 2, [260, 0], {"jsCode": scan_js}),
-            node("Format Slack messages", "n8n-nodes-base.code", 2, [520, 0], {"jsCode": format_js}),
-            slack_post("Post to Slack", [780, 0]),
+            # Always Output Data: an empty item on a quiet day keeps the summary flowing
+            node(flow[1], "n8n-nodes-base.code", 2, [240, 0], {"jsCode": list_js}, alwaysOutputData=True),
+            # Fetching lives in an HTTP node, not a Code node: no 60s Code limit, built-in batching and retries
+            node(flow[2], "n8n-nodes-base.httpRequest", 4.2, [480, 0], {
+                "url": "={{ $json.xmlUrl }}", "sendHeaders": True,
+                "headerParameters": {"parameters": [{"name": "User-Agent", "value": user_agent}]},
+                "options": {"batching": {"batch": {"batchSize": 5, "batchInterval": 1000}},
+                            "response": {"response": {"responseFormat": "text", "outputPropertyName": "xml"}},
+                            "timeout": 20000}},
+                retryOnFail=True, maxTries=3, waitBetweenTries=2000, onError="continueRegularOutput"),
+            node(flow[3], "n8n-nodes-base.code", 2, [720, 0], {"jsCode": match_js}),
+            node(flow[4], "n8n-nodes-base.code", 2, [960, 0], {"jsCode": format_js}),
+            slack_post(flow[5], [1200, 0]),
         ],
-        "connections": {
-            "Weekdays 07:30": {"main": [[{"node": "Scan SEC Form D filings", "type": "main", "index": 0}]]},
-            "Scan SEC Form D filings": {"main": [[{"node": "Format Slack messages", "type": "main", "index": 0}]]},
-            "Format Slack messages": {"main": [[{"node": "Post to Slack", "type": "main", "index": 0}]]},
-        },
+        "connections": {a: {"main": [[{"node": b, "type": "main", "index": 0}]]} for a, b in zip(flow, flow[1:])},
         "settings": {"executionOrder": "v1", "timezone": "America/New_York", "saveManualExecutions": True},
     }
     error_js = ("const e = $input.first().json;\n"
@@ -113,8 +121,8 @@ def workflows(scan_js: str, format_js: str, slack_url: str) -> tuple[dict, dict]
         "name": "Fund signals: error alerts",
         "nodes": [
             node("On workflow error", "n8n-nodes-base.errorTrigger", 1, [0, 0], {}),
-            node("Format error", "n8n-nodes-base.code", 2, [260, 0], {"jsCode": error_js}),
-            slack_post("Post error to Slack", [520, 0]),
+            node("Format error", "n8n-nodes-base.code", 2, [240, 0], {"jsCode": error_js}),
+            slack_post("Post error to Slack", [480, 0]),
         ],
         "connections": {
             "On workflow error": {"main": [[{"node": "Format error", "type": "main", "index": 0}]]},
@@ -129,19 +137,19 @@ def build():
     sec._load_dotenv()
     with duckdb.connect(str(DB), read_only=True) as con:
         lk, mgr = lookup(con), managers(con)
-    scan = (AUTOMATION / "scan.js").read_text()
+    list_js = (AUTOMATION / "list.js").read_text()
+    match_js = (AUTOMATION / "match.js").read_text()
     fmt = (AUTOMATION / "format.js").read_text()
-    private_scan = (scan.replace("__LOOKUP__", json.dumps(dict(zip(lk.k, lk.crd)), separators=(",", ":")))
-                        .replace("__MANAGERS__", json.dumps({c: mgr[c] for c in sorted(set(lk.crd))}, separators=(",", ":")))
-                        .replace("__USER_AGENT__", sec.user_agent()))
-    public_scan = (scan.replace("__LOOKUP__", "{} /* removed from the public copy */")
-                       .replace("__MANAGERS__", "{} /* removed from the public copy */")
-                       .replace("__USER_AGENT__", "Your Name you@example.com"))
+    private_match = (match_js.replace("__LOOKUP__", json.dumps(dict(zip(lk.k, lk.crd)), separators=(",", ":")))
+                             .replace("__MANAGERS__", json.dumps({c: mgr[c] for c in sorted(set(lk.crd))}, separators=(",", ":"))))
+    public_match = (match_js.replace("__LOOKUP__", "{} /* removed from the public copy */")
+                            .replace("__MANAGERS__", "{} /* removed from the public copy */"))
     slack = os.environ.get("SLACK_WEBHOOK_URL", "").strip() or "https://hooks.slack.com/services/REPLACE_ME"
-    for scan_js, slack_url, folder in ((private_scan, slack, PRIVATE / "n8n"),
-                                       (public_scan, "https://hooks.slack.com/services/REPLACE_ME", AUTOMATION / "n8n")):
+    builds = ((private_match, sec.user_agent(), slack, PRIVATE / "n8n"),
+              (public_match, "Your Name you@example.com", "https://hooks.slack.com/services/REPLACE_ME", AUTOMATION / "n8n"))
+    for match, ua, slack_url, folder in builds:
         folder.mkdir(parents=True, exist_ok=True)
-        main, errors = workflows(scan_js, fmt, slack_url)
+        main, errors = workflows(list_js.replace("__USER_AGENT__", ua), match, fmt, ua, slack_url)
         (folder / "fund-signals-daily.json").write_text(json.dumps(main, indent=2))
         (folder / "fund-signals-errors.json").write_text(json.dumps(errors, indent=2))
     print(f"lookup: {len(lk)} names for {lk.crd.nunique()} advisers")
@@ -177,7 +185,7 @@ def backtest():
           "general partner, manager or fund belongs to a manager that runs its funds without an outside administrator. "
           "A launch is when a manager decides how the new fund will be administered, so that's the moment to reach out. "
           "Workflow files: [`automation/n8n/`](../automation/n8n/) (the matching list is removed from the public copy). "
-          "Logic: [`scan.js`](../automation/scan.js), [`format.js`](../automation/format.js).", "",
+          "Logic: [`list.js`](../automation/list.js) → n8n HTTP Request (batched, retried) → [`match.js`](../automation/match.js) → [`format.js`](../automation/format.js).", "",
           "## How often it would have fired", "",
           f"The same matching rules, replayed over the Form D data sets ({scanned[1]:%b %Y} to {scanned[2]:%b %Y}):", "",
           table(["", ""], [
@@ -191,7 +199,7 @@ def backtest():
           "- Weekends and holidays have no index file and are skipped.",
           "- Every SEC request is retried with backoff. A filing that still fails counts as an error and is retried next run.",
           "- Processed filings are remembered between runs, so a rerun never alerts twice.",
-          "- Each run is capped. A backlog after an outage drains over the next runs and stays within n8n's time limit.",
+          "- Filings are downloaded by n8n's HTTP Request step (5 per second, retried), not inside a Code step, so the job stays within n8n Cloud's 60-second Code limit. Each run is capped, and a backlog after an outage drains over the next runs.",
           "- A daily summary posts even when there are no matches, so silence can't hide a broken job. "
           "A separate error workflow posts any failure to Slack.", ""]
     (OUT / "automation.md").write_text("\n".join(md) + "\n")

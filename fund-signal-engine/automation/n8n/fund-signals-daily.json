@@ -22,16 +22,71 @@
       }
     },
     {
-      "id": "517769c2-b5ac-555e-9859-45095af0c141",
-      "name": "Scan SEC Form D filings",
+      "id": "2cc4af61-3c2f-55c9-8d4e-de9f19bdedc8",
+      "name": "List new Form D filings",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        260,
+        240,
         0
       ],
       "parameters": {
-        "jsCode": "// n8n Code node: \"Scan SEC Form D filings\" (mode: Run Once for All Items).\n//\n// Finds new private-fund launches (Form D, type \"D\") filed since the last run,\n// and keeps those whose general partner, manager or fund name matches a known\n// self-administered manager. The matching list (LOOKUP/MANAGERS) is injected\n// when the private workflow is generated; the public copy ships it empty.\n//\n// Reliability:\n// - weekends are skipped; a weekday with no index file (a holiday) is noted, not an error\n// - each SEC request is retried with backoff; a filing that still fails is\n//   counted as an error, not fatal, and is retried on the next run\n// - filings already processed are remembered in workflow static data, so reruns\n//   never alert twice\n// - work per run is capped; a backlog (e.g. after an outage) drains over the\n//   next runs, so the node stays inside n8n's execution time limit\n\nconst LOOKUP = {} /* removed from the public copy */;      // { normalisedName: crd }\nconst MANAGERS = {} /* removed from the public copy */;  // { crd: { manager, tier, score, shortlist, contact, title, opener } }\nconst UA = 'Your Name you@example.com';\nconst MAX_DAYS_BACK = 4;        // covers a Monday run after Friday plus a holiday\nconst MAX_FILINGS_PER_RUN = 450;\nconst BATCH = 5;                // SEC fair access is 10 requests/second; stay at ~5\n\nconst state = $getWorkflowStaticData('global');\nstate.seen = state.seen || {};\nstate.runs = state.runs || [];\n\nconst SUFFIX = /\\b(LLC|L L C|LP|L P|LLLP|INC|CORP|CORPORATION|CO|COMPANY|LTD|LIMITED|THE)\\b/g;\nconst norm = s => String(s || '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(SUFFIX, ' ').split(/\\s+/).filter(Boolean).join(' ');\nconst tag = (xml, name) => { const m = xml.match(new RegExp(`<${name}>([\\\\s\\\\S]*?)</${name}>`)); return m ? m[1].trim() : ''; };\nconst sleep = ms => new Promise(r => setTimeout(r, ms));\nconst ymd = d => d.toISOString().slice(0, 10).replace(/-/g, '');\nconst http = this.helpers.httpRequest.bind(this.helpers);\n\nasync function get(url, { missingOk = false, tries = 3 } = {}) {\n  for (let i = 1; i <= tries; i++) {\n    try {\n      return await http({ url, headers: { 'User-Agent': UA }, json: false });\n    } catch (e) {\n      const code = String(e.httpCode || e.statusCode || (e.response && e.response.status) || '');\n      if (code === '404' || (missingOk && code === '403')) return null;  // SEC answers 403 for a missing index file\n      if (i === tries) throw e;\n      await sleep(2000 * i);\n    }\n  }\n}\n\n// 1. Which days are due: after the last fully scanned day, up to yesterday.\nconst now = new Date();\nconst due = [];\nfor (let back = MAX_DAYS_BACK; back >= 1; back--) {\n  const d = new Date(now); d.setUTCDate(d.getUTCDate() - back);\n  if ([0, 6].includes(d.getUTCDay())) continue;  // no filings at weekends\n  if (!state.lastScanned || ymd(d) > state.lastScanned) due.push(ymd(d));\n}\n\nconst run = { at: now.toISOString(), daysChecked: due, indexDays: 0, noIndexDays: [], formD: 0, funds: 0, matched: 0, errors: 0, deferred: 0 };\n\n// 2. Read each day's index; collect new Form D filings not yet processed.\nconst queue = [];   // { day, cik, accession }\nconst perDay = {};  // day -> number of filings queued\nfor (const day of due) {\n  const q = Math.floor((Number(day.slice(4, 6)) - 1) / 3) + 1;\n  let idx;\n  try {\n    idx = await get(`https://www.sec.gov/Archives/edgar/daily-index/${day.slice(0, 4)}/QTR${q}/form.${day}.idx`, { missingOk: true });\n  } catch (e) { run.errors++; break; }  // can't read this day: stop here, retry next run\n  perDay[day] = 0;\n  if (!idx) { run.noIndexDays.push(day); continue; }  // market holiday\n  run.indexDays++;\n  for (const line of idx.split('\\n')) {\n    if (!/^D\\s{2,}/.test(line)) continue;  // new offerings only, not D/A amendments\n    const m = line.match(/edgar\\/data\\/(\\d+)\\/(\\S+)\\.txt/);\n    if (!m || state.seen[m[2]]) continue;\n    queue.push({ day, cik: m[1], accession: m[2] });\n    perDay[day]++;\n  }\n}\n\n// 3. Fetch and match, five filings at a time.\nconst work = queue.slice(0, MAX_FILINGS_PER_RUN);\nrun.deferred = queue.length - work.length;\nconst alerts = [];\nconst failedDays = new Set(queue.slice(MAX_FILINGS_PER_RUN).map(f => f.day));\n\nfor (let i = 0; i < work.length; i += BATCH) {\n  const batch = work.slice(i, i + BATCH);\n  const started = Date.now();\n  await Promise.all(batch.map(async f => {\n    run.formD++;\n    let xml;\n    try {\n      xml = await get(`https://www.sec.gov/Archives/edgar/data/${f.cik}/${f.accession.replace(/-/g, '')}/primary_doc.xml`);\n    } catch (e) { xml = undefined; }\n    if (!xml) { run.errors++; failedDays.add(f.day); return; }\n    state.seen[f.accession] = f.day;\n\n    const fundType = tag(xml, 'investmentFundType');\n    const industry = tag(xml, 'industryGroupType');\n    const isFund = ['Private Equity Fund', 'Other Investment Fund'].includes(fundType)\n      || ['Other Real Estate', 'Commercial', 'Residential', 'REITS and Finance'].includes(industry);\n    if (!isFund) return;\n    run.funds++;\n\n    const issuer = tag(xml, 'entityName');\n    const entities = [...xml.matchAll(/<relatedPersonName>([\\s\\S]*?)<\\/relatedPersonName>/g)]\n      .map(m => ({ first: tag(m[1], 'firstName'), last: tag(m[1], 'lastName') }))\n      .filter(p => ['N/A', 'NA', ''].includes(p.first.toUpperCase()))\n      .map(p => p.last);\n    const matchedOn = [issuer, ...entities].find(n => LOOKUP[norm(n)]);\n    if (!matchedOn) return;\n    run.matched++;\n    const crd = LOOKUP[norm(matchedOn)];\n    alerts.push({\n      type: 'alert', filed: f.day, accession: f.accession, issuer, matchedOn,\n      fundType: fundType || industry, amount: tag(xml, 'totalOfferingAmount'),\n      crd, ...(MANAGERS[crd] || {}),\n      filingUrl: `https://www.sec.gov/Archives/edgar/data/${f.cik}/${f.accession.replace(/-/g, '')}/`,\n      adviserUrl: `https://adviserinfo.sec.gov/firm/summary/${crd}`,\n    });\n  }));\n  const wait = 1000 - (Date.now() - started);\n  if (wait > 0) await sleep(wait);\n}\n\n// 4. Advance the cursor past every due day that is now fully processed.\nfor (const day of Object.keys(perDay).sort()) {\n  if (failedDays.has(day)) break;\n  state.lastScanned = day;\n}\nconst cutoff = ymd(new Date(now - 30 * 864e5));\nfor (const [acc, day] of Object.entries(state.seen)) if (day < cutoff) delete state.seen[acc];\nstate.runs.push(run);\nstate.runs = state.runs.slice(-200);\n\nreturn [\n  ...alerts.map(a => ({ json: a })),\n  { json: { type: 'summary', ...run, runsSoFar: state.runs.length,\n            matchesSoFar: state.runs.reduce((s, r) => s + r.matched, 0),\n            errorsSoFar: state.runs.reduce((s, r) => s + r.errors, 0) } },\n];\n"
+        "jsCode": "// n8n Code node: \"List new Form D filings\" (mode: Run Once for All Items).\n//\n// Reads the SEC daily index for every weekday since the last completed scan and\n// lists the new Form D filings (type \"D\", not amendments) not yet processed.\n// Only the index files are fetched here (1-4 requests), so this node stays far\n// inside n8n Cloud's 60-second Code limit; the filings themselves are fetched by\n// the HTTP Request node that follows, which handles batching and retries.\n//\n// The node has \"Always Output Data\" on: on a day with nothing to fetch it emits\n// one empty item, so the rest of the flow still runs and posts the daily summary.\n\nconst UA = 'Your Name you@example.com';\nconst MAX_DAYS_BACK = 4;          // a Monday run covers Friday, plus a holiday\nconst MAX_FILINGS_PER_RUN = 450;  // a backlog after an outage drains over later runs\n\nconst state = $getWorkflowStaticData('global');\nstate.seen = state.seen || {};\nconst ymd = d => d.toISOString().slice(0, 10).replace(/-/g, '');\nconst sleep = ms => new Promise(r => setTimeout(r, ms));\n\nasync function index(day) {\n  const q = Math.floor((Number(day.slice(4, 6)) - 1) / 3) + 1;\n  const url = `https://www.sec.gov/Archives/edgar/daily-index/${day.slice(0, 4)}/QTR${q}/form.${day}.idx`;\n  for (let i = 1; i <= 3; i++) {\n    try {\n      return await this.helpers.httpRequest({ url, headers: { 'User-Agent': UA }, json: false });\n    } catch (e) {\n      const code = String(e.httpCode || e.statusCode || (e.response && e.response.status) || '');\n      if (code === '403' || code === '404') return null;  // the SEC answers 403 for a missing index (holiday)\n      if (i === 3) throw e;\n      await sleep(2000 * i);\n    }\n  }\n}\n\nconst now = new Date();\nconst due = [];\nfor (let back = MAX_DAYS_BACK; back >= 1; back--) {\n  const d = new Date(now); d.setUTCDate(d.getUTCDate() - back);\n  if ([0, 6].includes(d.getUTCDay())) continue;  // no filings at weekends\n  if (!state.lastScanned || ymd(d) > state.lastScanned) due.push(ymd(d));\n}\n\nconst run = { at: now.toISOString(), daysChecked: [], noIndexDays: [], indexErrors: 0, listed: 0, deferredDays: [] };\nconst filings = [];\nfor (const day of due) {\n  let idx;\n  try { idx = await index.call(this, day); } catch (e) { run.indexErrors++; break; }  // retry from here next run\n  run.daysChecked.push(day);\n  if (!idx) { run.noIndexDays.push(day); continue; }\n  for (const line of idx.split('\\n')) {\n    if (!/^D\\s{2,}/.test(line)) continue;\n    const m = line.match(/edgar\\/data\\/(\\d+)\\/(\\S+)\\.txt/);\n    if (!m || state.seen[m[2]]) continue;\n    filings.push({ day, cik: m[1], accession: m[2],\n                   xmlUrl: `https://www.sec.gov/Archives/edgar/data/${m[1]}/${m[2].replace(/-/g, '')}/primary_doc.xml` });\n  }\n}\n\nconst work = filings.slice(0, MAX_FILINGS_PER_RUN);\nrun.listed = work.length;\nrun.deferredDays = [...new Set(filings.slice(MAX_FILINGS_PER_RUN).map(f => f.day))];\nstate.pendingRun = run;  // picked up by the match node\n\nreturn work.map(f => ({ json: f }));\n"
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "759772f4-5e17-5bd3-be7d-5c81851db957",
+      "name": "Fetch Form D",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "url": "={{ $json.xmlUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Your Name you@example.com"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 1000
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "xml"
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "82740818-d195-5ef5-8fe3-0207d88b675f",
+      "name": "Match against self-administered managers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// n8n Code node: \"Match against self-administered managers\" (mode: Run Once for All Items).\n//\n// Input: one item per filing from the HTTP Request node (the Form D XML in\n// `xml`, or an error item if the fetch failed after its retries). Keeps fund\n// offerings whose general partner, manager or fund name matches a known\n// self-administered manager, marks filings as seen, advances the scan cursor,\n// and emits the alerts plus one summary item. The matching list is injected\n// when the private workflow is generated; the public copy ships it empty.\n\nconst LOOKUP = {} /* removed from the public copy */;      // { normalisedName: crd }\nconst MANAGERS = {} /* removed from the public copy */;  // { crd: { manager, tier, score, shortlist, contact, title, opener } }\n\nconst state = $getWorkflowStaticData('global');\nstate.seen = state.seen || {};\nstate.runs = state.runs || [];\nconst run = state.pendingRun || { daysChecked: [], noIndexDays: [], indexErrors: 0, listed: 0, deferredDays: [] };\ndelete state.pendingRun;\n\nconst SUFFIX = /\\b(LLC|L L C|LP|L P|LLLP|INC|CORP|CORPORATION|CO|COMPANY|LTD|LIMITED|THE)\\b/g;\nconst norm = s => String(s || '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(SUFFIX, ' ').split(/\\s+/).filter(Boolean).join(' ');\nconst tag = (xml, name) => { const m = xml.match(new RegExp(`<${name}>([\\\\s\\\\S]*?)</${name}>`)); return m ? m[1].trim() : ''; };\nconst FUND_TYPES = ['Private Equity Fund', 'Other Investment Fund'];\nconst RE_GROUPS = ['Other Real Estate', 'Commercial', 'Residential', 'REITS and Finance'];\n\nconst listed = $('List new Form D filings').all();\nconst results = $input.all();\nconst failedDays = new Set(run.deferredDays);\nconst alerts = [];\nObject.assign(run, { formD: 0, funds: 0, matched: 0, errors: run.indexErrors });\n\nresults.forEach((item, i) => {\n  const f = listed[item.pairedItem?.item ?? i]?.json;\n  if (!f || !f.accession) return;  // the empty item on a day with nothing to fetch\n  run.formD++;\n  const xml = typeof item.json.xml === 'string' ? item.json.xml : '';\n  if (!xml.includes('<edgarSubmission')) { run.errors++; failedDays.add(f.day); return; }\n  state.seen[f.accession] = f.day;\n\n  const fundType = tag(xml, 'investmentFundType');\n  const industry = tag(xml, 'industryGroupType');\n  if (!FUND_TYPES.includes(fundType) && !RE_GROUPS.includes(industry)) return;\n  run.funds++;\n\n  const issuer = tag(xml, 'entityName');\n  const entities = [...xml.matchAll(/<relatedPersonName>([\\s\\S]*?)<\\/relatedPersonName>/g)]\n    .map(m => ({ first: tag(m[1], 'firstName'), last: tag(m[1], 'lastName') }))\n    .filter(p => ['N/A', 'NA', ''].includes(p.first.toUpperCase()))\n    .map(p => p.last);\n  const matchedOn = [issuer, ...entities].find(n => LOOKUP[norm(n)]);\n  if (!matchedOn) return;\n  run.matched++;\n  const crd = LOOKUP[norm(matchedOn)];\n  const folder = `https://www.sec.gov/Archives/edgar/data/${f.cik}/${f.accession.replace(/-/g, '')}/`;\n  alerts.push({ type: 'alert', filed: f.day, accession: f.accession, issuer, matchedOn,\n                fundType: fundType || industry, amount: tag(xml, 'totalOfferingAmount'),\n                crd, ...(MANAGERS[crd] || {}), filingUrl: folder,\n                adviserUrl: `https://adviserinfo.sec.gov/firm/summary/${crd}` });\n});\n\n// Advance the cursor past every checked day whose filings were all processed.\nfor (const day of [...run.daysChecked].sort()) {\n  if (failedDays.has(day)) break;\n  state.lastScanned = day;\n}\nconst cutoff = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10).replace(/-/g, '');\nfor (const [acc, day] of Object.entries(state.seen)) if (day < cutoff) delete state.seen[acc];\nstate.runs.push(run);\nstate.runs = state.runs.slice(-200);\n\nreturn [\n  ...alerts.map(a => ({ json: a })),\n  { json: { type: 'summary', ...run, deferred: run.deferredDays.length,\n            runsSoFar: state.runs.length,\n            matchesSoFar: state.runs.reduce((s, r) => s + (r.matched || 0), 0),\n            errorsSoFar: state.runs.reduce((s, r) => s + (r.errors || 0), 0) } },\n];\n"
       }
     },
     {
@@ -40,11 +95,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        520,
+        960,
         0
       ],
       "parameters": {
-        "jsCode": "// n8n Code node: \"Format Slack messages\" (mode: Run Once for All Items).\n// One message per matched filing, plus a daily summary so quiet days still\n// prove the job ran.\n\nconst money = v => (/^\\d+$/.test(v || '') ? '$' + (Number(v) / 1e6).toFixed(1) + 'M' : 'amount not stated');\nconst day = d => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}`;\nconst items = $input.all().map(i => i.json);\nconst out = [];\n\n// One message per manager per filing day, listing every new fund it filed.\nconst groups = {};\nfor (const a of items.filter(a => a.type === 'alert')) (groups[`${a.crd}|${a.filed}`] ||= []).push(a);\n\nfor (const group of Object.values(groups)) {\n  const a = group[0];\n  const priority = a.tier === 'A' || a.tier === 'B';\n  const funds = group.map(g => `\u2022 ${g.issuer} (${g.fundType}, ${money(g.amount)}) <${g.filingUrl}|filing>`);\n  const lines = [\n    `${priority ? ':rotating_light: *Priority*' : ':eyes: *Watchlist*'}: *${a.manager || a.matchedOn}* filed `\n      + `${group.length === 1 ? 'a new fund' : `${group.length} new funds`} on ${day(a.filed)}`,\n    ...funds,\n    `*Why it matters:* this manager runs its existing PE/RE funds without an outside administrator`\n      + (priority ? `. Tier ${a.tier}${a.score != null ? `, v2 score ${(a.score * 100).toFixed(1)}%` : ''}`\n                    + `${a.shortlist ? ', on the outreach shortlist' : ''}.` : '.'),\n  ];\n  if (a.contact) lines.push(`*Contact:* ${a.contact}${a.title ? ` (${a.title})` : ''}`);\n  if (a.opener) lines.push(`*Draft opener:*\\n>${a.opener.replace(/\\n/g, '\\n>')}`);\n  lines.push(`<${a.adviserUrl}|SEC adviser profile> \u00b7 matched on \"${a.matchedOn}\"`);\n  out.push({ json: { slack: { text: lines.join('\\n') } } });\n}\n\nfor (const a of items.filter(a => a.type === 'summary')) {\n  const days = a.daysChecked.length ? a.daysChecked.map(day).join(', ') : 'none due';\n  out.push({ json: { slack: { text:\n    `:white_check_mark: Daily scan done. Days: ${days}. Form D filings checked: ${a.formD}, `\n    + `fund offerings: ${a.funds}, matches: *${a.matched}* (${Object.keys(groups).length} alert${Object.keys(groups).length === 1 ? '' : 's'}), errors: ${a.errors}`\n    + (a.deferred ? `, deferred to next run: ${a.deferred}` : '')\n    + (a.noIndexDays.length ? `, no SEC index (holiday?): ${a.noIndexDays.map(day).join(', ')}` : '')\n    + `. Run #${a.runsSoFar}: ${a.matchesSoFar} matches and ${a.errorsSoFar} errors so far.` } } });\n}\nreturn out;\n"
+        "jsCode": "// n8n Code node: \"Format Slack messages\" (mode: Run Once for All Items).\n// One message per matched filing, plus a daily summary so quiet days still\n// prove the job ran.\n\nconst money = v => (/^\\d+$/.test(v || '') ? '$' + (Number(v) / 1e6).toFixed(1) + 'M' : 'amount not stated');\nconst day = d => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}`;\nconst items = $input.all().map(i => i.json);\nconst out = [];\n\n// One message per manager per filing day, listing every new fund it filed.\nconst groups = {};\nfor (const a of items.filter(a => a.type === 'alert')) (groups[`${a.crd}|${a.filed}`] ||= []).push(a);\n\nfor (const group of Object.values(groups)) {\n  const a = group[0];\n  const priority = a.tier === 'A' || a.tier === 'B';\n  const funds = group.map(g => `\u2022 ${g.issuer} (${g.fundType}, ${money(g.amount)}) <${g.filingUrl}|filing>`);\n  const lines = [\n    `${priority ? ':rotating_light: *Priority*' : ':eyes: *Watchlist*'}: *${a.manager || a.matchedOn}* filed `\n      + `${group.length === 1 ? 'a new fund' : `${group.length} new funds`} on ${day(a.filed)}`,\n    ...funds,\n    `*Why it matters:* this manager runs its existing PE/RE funds without an outside administrator`\n      + (priority ? `. Tier ${a.tier}${a.score != null ? `, v2 score ${(a.score * 100).toFixed(1)}%` : ''}`\n                    + `${a.shortlist ? ', on the outreach shortlist' : ''}.` : '.'),\n  ];\n  if (a.contact) lines.push(`*Contact:* ${a.contact}${a.title ? ` (${a.title})` : ''}`);\n  if (a.opener) lines.push(`*Draft opener:*\\n>${a.opener.replace(/\\n/g, '\\n>')}`);\n  lines.push(`<${a.adviserUrl}|SEC adviser profile> \u00b7 matched on \"${a.matchedOn}\"`);\n  out.push({ json: { slack: { text: lines.join('\\n') } } });\n}\n\nfor (const a of items.filter(a => a.type === 'summary')) {\n  const days = a.daysChecked.length ? a.daysChecked.map(day).join(', ') : 'none due';\n  out.push({ json: { slack: { text:\n    `:white_check_mark: Daily scan done. Days: ${days}. Form D filings checked: ${a.formD}, `\n    + `fund offerings: ${a.funds}, matches: *${a.matched}* (${Object.keys(groups).length} alert${Object.keys(groups).length === 1 ? '' : 's'}), errors: ${a.errors}`\n    + (a.deferred ? `, days deferred to next run: ${a.deferred}` : '')\n    + (a.noIndexDays.length ? `, no SEC index (holiday?): ${a.noIndexDays.map(day).join(', ')}` : '')\n    + `. Run #${a.runsSoFar}: ${a.matchesSoFar} matches and ${a.errorsSoFar} errors so far.` } } });\n}\nreturn out;\n"
       }
     },
     {
@@ -53,7 +108,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        780,
+        1200,
         0
       ],
       "parameters": {
@@ -74,14 +129,36 @@
       "main": [
         [
           {
-            "node": "Scan SEC Form D filings",
+            "node": "List new Form D filings",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Scan SEC Form D filings": {
+    "List new Form D filings": {
+      "main": [
+        [
+          {
+            "node": "Fetch Form D",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Form D": {
+      "main": [
+        [
+          {
+            "node": "Match against self-administered managers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match against self-administered managers": {
       "main": [
         [
           {

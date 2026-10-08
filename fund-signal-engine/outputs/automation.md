@@ -2,7 +2,7 @@
 
 # Daily automation: new fund launches by self-administered managers
 
-An n8n workflow checks the SEC every weekday for new private-fund offerings (Form D) and alerts Slack when the general partner, manager or fund belongs to a manager that runs its funds without an outside administrator. A launch is when a manager decides how the new fund will be administered, so that's the moment to reach out. Workflow files: [`automation/n8n/`](../automation/n8n/) (the matching list is removed from the public copy). Logic: [`scan.js`](../automation/scan.js), [`format.js`](../automation/format.js).
+An n8n workflow checks the SEC every weekday for new private-fund offerings (Form D) and alerts Slack when the general partner, manager or fund belongs to a manager that runs its funds without an outside administrator. A launch is when a manager decides how the new fund will be administered, so that's the moment to reach out. Workflow files: [`automation/n8n/`](../automation/n8n/) (the matching list is removed from the public copy). Logic: [`list.js`](../automation/list.js) → n8n HTTP Request (batched, retried) → [`match.js`](../automation/match.js) → [`format.js`](../automation/format.js).
 
 ## How often it would have fired
 
@@ -21,6 +21,6 @@ The same matching rules, replayed over the Form D data sets (Jul 2025 to Jun 202
 - Weekends and holidays have no index file and are skipped.
 - Every SEC request is retried with backoff. A filing that still fails counts as an error and is retried next run.
 - Processed filings are remembered between runs, so a rerun never alerts twice.
-- Each run is capped. A backlog after an outage drains over the next runs and stays within n8n's time limit.
+- Filings are downloaded by n8n's HTTP Request step (5 per second, retried), not inside a Code step, so the job stays within n8n Cloud's 60-second Code limit. Each run is capped, and a backlog after an outage drains over the next runs.
 - A daily summary posts even when there are no matches, so silence can't hide a broken job. A separate error workflow posts any failure to Slack.
 
