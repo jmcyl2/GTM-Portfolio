@@ -143,6 +143,7 @@ uv run fse-refresh    # ~10 min: one PDF per Tier A firm, cached under data/
 uv run fse-clay push  # needs CLAY_WEBHOOK_URL in .env; then set up the waterfall per docs/
 uv run fse-clay report --credits <used> --actions <used>
 uv run fse-openers    # drafts to data/private/, anonymized examples to outputs/
+uv run fse-dashboard-data && uv run streamlit run dashboard/app.py   # public dashboard
 ```
 
 ## Data handling
@@ -157,4 +158,4 @@ Everything comes from public SEC filings. The repo only holds summary statistics
 4. ~~Contacts from SEC filings + Clay email waterfall, with QA and cost per usable email~~
 5. ~~Personalized opening lines written from each fund's own filing data (drafted, not sent)~~
 6. Daily job in n8n: new filings → remove duplicates → score → Slack alert (built and tested; [backtest](outputs/automation.md); live run starting)
-7. Public dashboard: a map of the fund administration market
+7. ~~Public dashboard: a map of the fund administration market~~ ([`dashboard/app.py`](dashboard/app.py), data in [`outputs/dashboard/`](outputs/dashboard/))

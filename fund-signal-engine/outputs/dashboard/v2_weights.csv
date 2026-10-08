@@ -1,0 +1,21 @@
+signal,weight
+Only takes qualified purchasers (large or very wealthy investors),0.284909333384148
+"Fund age (years, capped at 10)",-0.23338242714992485
+Real estate fund (vs PE),-0.22773252767872174
+Adviser already uses an administrator for another fund,0.22464867383867762
+Fund of funds,0.19308467240958022
+Audited,0.1639233860476153
+Adviser private fund assets (log),-0.15465856704408787
+% assets valued by third party,0.14376369478145437
+Master/feeder structure,0.11795077968649534
+% owned by non-US investors,-0.07631166314176832
+Minimum investment (log),0.07444094351958508
+Fund asset growth over the year (capped),0.05703877229470826
+% owned by adviser/related,-0.05066770006728926
+Uses a placement agent to raise money,0.04596901599965463
+Adviser fully SEC-registered (vs exempt reporting),-0.0459395243284117
+Number of investors (log),0.040134870808180345
+Adviser fund count (log),-0.027566002254404386
+Fund assets (log),0.02316493541390388
+Audited financials sent to investors,0.01765619302944897
+Financials prepared under GAAP,0.0005856661090125009
